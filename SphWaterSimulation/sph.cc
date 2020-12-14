@@ -1,81 +1,123 @@
 #include "sph.h"
 
+#include <string>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 
+#include "constants.h"
+
 namespace SPH
 {
-	void Sph::add_node(int i, int j, int r, char status){
+	void Sph::init(){
+		Particle temp_node(rho_L, init_pressure, g_gravity);
+		// 1. Set "Wall" nodes as the bounding box.
+		setWallNodes();
+		// 2. Set "RigidBody" nodes as the wheel, as well as the meshes for rendering.
+		setRigidBodyMesh();
+		setRigidBodyNodes();
+		// 3. Set "Liquid" nodes as the water.
+		setLiquidNodes();
+
+		std::cout << "The total number of particles: " << total_num << std::endl;
+		old_u = std::vector<Vec3>(total_num, Vec3(0.0, 0.0, 0.0));
+	}
+
+	// Register a node of different kinds to 'nodes' as well as 'idx_table' during init().
+	// If the node is rigidbody
+	void Sph::addNode(int i, int j, int r, std::string status){
+		// Rigidbody and wall nodes takes the first priority.
 		if(m_grid_num[i][j][r] == 1){
-			if(status != 'L'){
-				if(!Nodes[idx_table[i][j][r][0]].isRigidBody() && status == 'R'){
-					m_rigidbody.particle_indexes.push_back(idx_table[i][j][r][0]);
+			if(status != "Liquid"){
+				if(!nodes[idx_table[i][j][r][0]].isRigidBody() && status == "RigidBody"){
+					rigidbody.particle_indexes.push_back(idx_table[i][j][r][0]);
 				}
-				Nodes[idx_table[i][j][r][0]].set_status(status);
+				nodes[idx_table[i][j][r][0]].setStatus(status);
 			}
 			return;
 		}
-		Particle temp_node(rho_L, p0, g_accelerate);
-
-		idx_table[i][j][r].push_back(total_num++); //Push index into index table
-		temp_node.setplace(i * dx, j * dy, r * dz);
-		temp_node.set_status(status);
-		Nodes.push_back(temp_node);//Push new node into node list.
-		if(temp_node.isRigidBody()){ m_rigidbody.particle_indexes.push_back(Nodes.size() - 1); }
+		Particle temp_node(rho_L, init_pressure, g_gravity);
+		// Register the index of particle to 'idx_table'.
+		idx_table[i][j][r].push_back(total_num++);
+		temp_node.setPosition(i * dx, j * dy, r * dz);
+		temp_node.setStatus(status);
+		nodes.push_back(temp_node);//Push new node into node list.
+		if(temp_node.isRigidBody()){ rigidbody.particle_indexes.push_back(nodes.size() - 1); }
 		m_grid_num[i][j][r] = 1;
 	}
 
-	void Sph::Set_BoundaryNodes(){
-		//Special Zone: Wall
-		if(boundary_band[0] == 'W'){ //Left
-			for(int j = 0; j <= m; j++)
-				for(int r = 0; r <= h; r++){
-					add_node(0, j, r, 'W'); add_node(1, j, r, 'W');
+	// Set "Wall" nodes as the bounding box
+	// Example: if m = 30 in y direction, then particles with index 0, 30 will be wall nodes,
+	// and particles with index from 1 to 29 (inclusive) will be fluid nodes
+	void Sph::setWallNodes(){
+		for(int j = 0; j <= m; j++)
+			for(int r = 0; r <= h; r++){
+				addNode(0, j, r, "Wall"); addNode(1, j, r, "Wall");
+			}
+		for(int j = 0; j <= m; j++)
+			for(int r = 0; r <= h; r++){
+				addNode(l, j, r, "Wall"); addNode(l - 1, j, r, "Wall");
+			}
+		for(int i = 0; i <= l; i++)
+			for(int r = 0; r <= h; r++){
+				addNode(i, 0, r, "Wall"); addNode(i, 1, r, "Wall");
+			}
+		for(int i = 0; i <= l; i++)
+			for(int r = 0; r <= h; r++){
+				addNode(i, m, r, "Wall"); addNode(i, m - 1, r, "Wall");
+			}
+		for(int i = 0; i <= l; i++)
+			for(int j = 0; j <= m; j++){
+				addNode(i, j, 0, "Wall"); addNode(i, j, 1, "Wall");
+			}
+		for(int i = 0; i <= l; i++)
+			for(int j = 0; j <= m; j++){
+				addNode(i, j, h, "Wall"); addNode(i, j, h - 1, "Wall");
+			}
+	}
+
+	void Sph::setRigidBodyNodes(){
+		translate_vertex = rigidbody.position; translate_vertex.setz(0.0);
+		int i = 0, j = 0, r = 0;
+		for(i = 0; i <= l; i++){
+			for(j = 0; j <= m; j++){
+				for(r = 0; r <= h; r++){
+					if(r * dz > 2 * dz + rigidbody.m_wheel_height){ continue; } //The 2*dy is because the boundary layer.
+					if(r * dz < 2 * dz){ continue; }
+					double local_x = i * dx - rigidbody.position.getx();
+					double local_y = j * dy - rigidbody.position.gety();
+					double r_norm2 = local_x * local_x + local_y * local_y;
+					if(r_norm2 > rigidbody.m_wheel_radius_outsize * rigidbody.m_wheel_radius_outsize){ continue; }
+					else if(r_norm2 <= rigidbody.m_wheel_radius_insize * rigidbody.m_wheel_radius_insize){
+						addNode(i, j, r, "RigidBody");
+					}
+					else{
+						double dtheta = math_const::PI / rigidbody.m_leafnum;
+						double r_norm = sqrt(r_norm2);
+						double costheta = local_x / r_norm, sintheta = local_y / r_norm;
+						double theta = acos(costheta);
+						if(sintheta < 0.0){ theta = 2 * math_const::PI - theta; }
+						int dnum = (int)((theta + 2 * math_const::PI) / dtheta);
+						if(dnum % 2 == 0){
+							addNode(i, j, r, "RigidBody");
+						}
+					}
 				}
-		}
-		if(boundary_band[1] == 'W'){ //Right
-			for(int j = 0; j <= m; j++)
-				for(int r = 0; r <= h; r++){
-					add_node(l, j, r, 'W'); add_node(l - 1, j, r, 'W');
-				}
-		}
-		if(boundary_band[2] == 'W'){ //Forward
-			for(int i = 0; i <= l; i++)
-				for(int r = 0; r <= h; r++){
-					add_node(i, 0, r, 'W'); add_node(i, 1, r, 'W');
-				}
-		}
-		if(boundary_band[3] == 'W'){ //Back
-			for(int i = 0; i <= l; i++)
-				for(int r = 0; r <= h; r++){
-					add_node(i, m, r, 'W'); add_node(i, m - 1, r, 'W');
-				}
-		}
-		if(boundary_band[4] == 'W'){ //Down
-			for(int i = 0; i <= l; i++)
-				for(int j = 0; j <= m; j++){
-					add_node(i, j, 0, 'W'); add_node(i, j, 1, 'W');
-				}
-		}
-		if(boundary_band[5] == 'W'){ //Up
-			for(int i = 0; i <= l; i++)
-				for(int j = 0; j <= m; j++){
-					add_node(i, j, h, 'W'); add_node(i, j, h - 1, 'W');
-				}
+			}
 		}
 	}
 
-	void Sph::set_mesh_for_RigidBody(){
-		//For wheel, get its mesh:
-		double down_height = 2 * dz, up_height = m_rigidbody.m_wheel_height + 2 * dz;
-		double r_in = m_rigidbody.m_wheel_radius_insize, r_out = m_rigidbody.m_wheel_radius_outsize;
+
+	// 
+	void Sph::setRigidBodyMesh(){
+		double down_height = 2 * dz, up_height = rigidbody.m_wheel_height + 2 * dz;
+		double r_in = rigidbody.m_wheel_radius_insize, r_out = rigidbody.m_wheel_radius_outsize;
 		vertex_localcoord.push_back(Vec3(0.0f, 0.0f, down_height));//The 2*dy is because the boundary layer.
 		vertex_localcoord.push_back(Vec3(0.0f, 0.0f, up_height));//The 2*dy is because the boundary layer.
-		double dtheta = 3.1415926 / m_rigidbody.m_leafnum;
-		for(int k = 1; k <= m_rigidbody.m_leafnum; k++){
-			//step 1: Add 8 new vertex into the list
+		double dtheta = math_const::PI / rigidbody.m_leafnum;
+		for(int k = 1; k <= rigidbody.m_leafnum; k++){
+			// Step 1: Add 8 new vertex into the list
 			int idx_8[8] = { 8 * k - 6, 8 * k - 5, 8 * k - 4, 8 * k - 3, 8 * k - 2, 8 * k - 1, 8 * k, 8 * k + 1 };
 			double cos_thetaminor = cos((2 * k - 2) * dtheta), sin_thetaminor = sin((2 * k - 2) * dtheta);
 			double cos_thetabigger = cos((2 * k - 1) * dtheta), sin_thetabigger = sin((2 * k - 1) * dtheta);
@@ -90,7 +132,7 @@ namespace SPH
 			vertex_localcoord.push_back(Vec3(r_out * cos_thetabigger, r_out * sin_thetabigger, up_height)); // idx_8[6]
 			vertex_localcoord.push_back(Vec3(r_in * cos_thetabigger, r_in * sin_thetabigger, up_height)); // idx_8[7]
 
-			//step 2: Create faces: 4 triangles + 4 Quads = 12 * triangles
+			// Step 2: Create faces: 4 triangles + 4 Quads = 12 * triangles
 			faces.push_back(std::vector<int>{0, idx_8[2], idx_8[1]}); //Trigngle #1
 			faces.push_back(std::vector<int>{1, idx_8[5], idx_8[6]}); //Trigngle #2
 
@@ -102,9 +144,9 @@ namespace SPH
 			faces.push_back(std::vector<int>{idx_8[0], idx_8[5], idx_8[4]}); //Quad #3
 
 			int idx_next0 = idx_8[0] + 8, idx_next4 = idx_8[4] + 8;
-			if(idx_next4 >= 2 + 8 * m_rigidbody.m_leafnum){
-				idx_next0 -= m_rigidbody.m_leafnum * 8;
-				idx_next4 -= m_rigidbody.m_leafnum * 8;
+			if(idx_next4 >= 2 + 8 * rigidbody.m_leafnum){
+				idx_next0 -= rigidbody.m_leafnum * 8;
+				idx_next4 -= rigidbody.m_leafnum * 8;
 			}
 			faces.push_back(std::vector<int>{0, idx_next0, idx_8[3]}); //Trigngle #3
 			faces.push_back(std::vector<int>{1, idx_8[7], idx_next4}); //Trigngle #4
@@ -114,64 +156,21 @@ namespace SPH
 		}
 	}
 
-	void Sph::initialization(){
-		Particle temp_node(rho_L, p0, g_accelerate);
-		int i = 0, j = 0, r = 0;
-		std::cout << "[Init]: Intitialization begin" << std::endl;
-
-		//How to set boundary?
-		// if m = 30 (in y direction), then the Boundary is set in idx = 0, 30, and the(1, 29) is fluid.
-		// 1. 'W' Points: Wall
-		Set_BoundaryNodes();
-
-		// 2. 'R' Points: Rigid body
-		set_mesh_for_RigidBody();
-		translate_vertex = m_rigidbody.position; translate_vertex.setz(0.0);
-		for(i = 0; i <= l; i++){
-			for(j = 0; j <= m; j++){
-				for(r = 0; r <= h; r++){
-					if(r * dz > 2 * dz + m_rigidbody.m_wheel_height){ continue; } //The 2*dy is because the boundary layer.
-					if(r * dz < 2 * dz){ continue; }
-					double local_x = i * dx - m_rigidbody.position.getx();
-					double local_y = j * dy - m_rigidbody.position.gety();
-					double r_norm2 = local_x * local_x + local_y * local_y;
-					if(r_norm2 > m_rigidbody.m_wheel_radius_outsize * m_rigidbody.m_wheel_radius_outsize){ continue; }
-					else if(r_norm2 <= m_rigidbody.m_wheel_radius_insize * m_rigidbody.m_wheel_radius_insize){
-						add_node(i, j, r, 'R');
-					}
-					else{
-						double dtheta = 3.1415926 / m_rigidbody.m_leafnum;
-						double r_norm = sqrt(r_norm2);
-						double costheta = local_x / r_norm, sintheta = local_y / r_norm;
-						double theta = acos(costheta);
-						if(sintheta < 0.0){ theta = 2 * 3.1415926 - theta; }
-						int dnum = (int)((theta + 2 * 3.1415926) / dtheta);
-						if(dnum % 2 == 0){
-							add_node(i, j, r, 'R');
-						}
-					}
+	void Sph::setLiquidNodes(){
+		for(int i = 0; i <= l; i++){
+			for(int j = 0; j < m / 3; j++){
+				for(int r = 0; r < 3 * h / 4; r++){
+					addNode(i, j, r, "Liquid");
 				}
 			}
 		}
-
-		// 3. 'L' Points: Liquid
-		for(i = 0; i <= l; i++){
-			for(j = 0; j < m / 3; j++){
-				for(r = 0; r < 3 * h / 4; r++){
-					add_node(i, j, r, 'L');
-				}
-			}
-		}
-
-		std::cout << "The total number of particles: " << total_num << std::endl;
-		old_u = std::vector<Vec3>(total_num, Vec3(0.0, 0.0, 0.0));
 	}
 
 	void Sph::record_velocity(){
 		int k = 0;
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			old_u[k] = Nodes[k].velocity;
+			old_u[k] = nodes[k].velocity;
 		}
 	}
 
@@ -181,103 +180,103 @@ namespace SPH
 
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			final_error += (old_u[k] - Nodes[k].velocity).sqrNorm();
+			final_error += (old_u[k] - nodes[k].velocity).sqrNorm();
 		}
 		return sqrt(final_error);
 	}
 
 	void Sph::compute_vis_accelerate(int k){
 		double Vb = 0.0;
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
-			if(!Nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
-				Vb += Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
+			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
 		Vb = 1.0 / Vb;
 
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
 			if(neighbor_ID == k){ continue; }
 
-			double r_sqnorm = (Nodes[k].position - Nodes[neighbor_ID].position).sqrNorm();
+			double r_sqnorm = (nodes[k].position - nodes[neighbor_ID].position).sqrNorm();
 			if(r_sqnorm > m_h * m_h){ continue; }
 
-			Vec3 Gradient_Wij = Gradient_Muller03Kernel_Pressure(Nodes[k].position, Nodes[neighbor_ID].position);
-			double u_dot_r = (Nodes[k].velocity - Nodes[neighbor_ID].velocity).dot(Nodes[k].position - Nodes[neighbor_ID].position);
-			if(Nodes[neighbor_ID].isFluid()){
+			Vec3 Gradient_Wij = Gradient_Muller03Kernel_Pressure(nodes[k].position, nodes[neighbor_ID].position);
+			double u_dot_r = (nodes[k].velocity - nodes[neighbor_ID].velocity).dot(nodes[k].position - nodes[neighbor_ID].position);
+			if(nodes[neighbor_ID].isFluid()){
 				//fluid - fluid
-				Nodes[k].force_vis += Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (m_mass * m_mass / Nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
+				nodes[k].force_vis += Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (m_mass * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
 			}
 			else{
 				//fluid - obstacle
 				double mass_rigid = m_mass;
-				Vec3 temp_force = Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (mass_rigid * m_mass / Nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
-				Nodes[k].force_vis += temp_force;
-				Nodes[neighbor_ID].force_vis += -temp_force;
+				Vec3 temp_force = Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (mass_rigid * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
+				nodes[k].force_vis += temp_force;
+				nodes[neighbor_ID].force_vis += -temp_force;
 			}
 		}
 	}
 
 	void Sph::compute_press_accelerate(int k){
-		if(Nodes[k].p < 0.0){ return; }
+		if(nodes[k].pressure < 0.0){ return; }
 
 		double Vb = 0.0;
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
-			if(!Nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
-				Vb += Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
+			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
 		Vb = 1.0 / Vb;
 
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
 
 			if(neighbor_ID == k){ continue; }
-			if((Nodes[k].position - Nodes[neighbor_ID].position).sqrNorm() > m_h * m_h){ continue; }
+			if((nodes[k].position - nodes[neighbor_ID].position).sqrNorm() > m_h * m_h){ continue; }
 
-			Vec3 Gradient_Wij = Gradient_Muller03Kernel_Pressure(Nodes[k].position, Nodes[neighbor_ID].position);
-			if(Nodes[neighbor_ID].isWall()){
+			Vec3 Gradient_Wij = Gradient_Muller03Kernel_Pressure(nodes[k].position, nodes[neighbor_ID].position);
+			if(nodes[neighbor_ID].isWall()){
 				//fluid - Obstacle
 				double mass_rigid = m_mass;
-				Vec3 temp_force = Gradient_Wij * (-2.0 * m_mass * mass_rigid * Nodes[k].p / Nodes[k].rho / Nodes[k].rho);
-				Nodes[k].force_press += temp_force;
-				Nodes[neighbor_ID].force_press += -temp_force;
+				Vec3 temp_force = Gradient_Wij * (-2.0 * m_mass * mass_rigid * nodes[k].pressure / nodes[k].rho / nodes[k].rho);
+				nodes[k].force_press += temp_force;
+				nodes[neighbor_ID].force_press += -temp_force;
 			}
 			else{
 				//fluid - fluid
-				Nodes[k].force_press += Gradient_Wij * (-m_mass * m_mass * \
-					(Nodes[k].p / Nodes[k].rho / Nodes[k].rho + \
-						Nodes[neighbor_ID].p / Nodes[neighbor_ID].rho / Nodes[neighbor_ID].rho));
+				nodes[k].force_press += Gradient_Wij * (-m_mass * m_mass * \
+					(nodes[k].pressure / nodes[k].rho / nodes[k].rho + \
+						nodes[neighbor_ID].pressure / nodes[neighbor_ID].rho / nodes[neighbor_ID].rho));
 			}
 		}
 	}
 
 	void Sph::Compute_Rho(int k){
-		if(Nodes[k].isWall()){ return; }
-		Nodes[k].rho = 0.0;
+		if(nodes[k].isWall()){ return; }
+		nodes[k].rho = 0.0;
 		double Vb = 0.0;
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
-			if(!Nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
-				Vb += Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
+			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
 		Vb = 1.0 / Vb;
-		for(int i = 0; i < Nodes[k].neighbor_index.size(); i++){
-			int neighbor_ID = Nodes[k].neighbor_index[i];
-			if((Nodes[k].position - Nodes[neighbor_ID].position).sqrNorm() > m_h * m_h){ continue; }
+		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
+			int neighbor_ID = nodes[k].neighbor_index[i];
+			if((nodes[k].position - nodes[neighbor_ID].position).sqrNorm() > m_h * m_h){ continue; }
 
-			Vec3 Grad_W = Gradient_Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
-			if(!Nodes[neighbor_ID].isFluid()){
+			Vec3 Grad_W = Gradient_Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
+			if(!nodes[neighbor_ID].isFluid()){
 				double mass_rigid = m_mass;
-				Nodes[k].rho += mass_rigid * Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
-				Nodes[k].rho += mass_rigid * m_dt * (Nodes[k].velocity - Nodes[neighbor_ID].velocity).dot(Grad_W);
+				nodes[k].rho += mass_rigid * Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
+				nodes[k].rho += mass_rigid * m_dt * (nodes[k].velocity - nodes[neighbor_ID].velocity).dot(Grad_W);
 			}
 			else{
-				Nodes[k].rho += m_mass * Muller03Kernel_Basic(Nodes[k].position, Nodes[neighbor_ID].position);
-				Nodes[k].rho += m_mass * m_dt * (Nodes[k].velocity - Nodes[neighbor_ID].velocity).dot(Grad_W);
+				nodes[k].rho += m_mass * Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
+				nodes[k].rho += m_mass * m_dt * (nodes[k].velocity - nodes[neighbor_ID].velocity).dot(Grad_W);
 			}
 		}
 	}
@@ -296,28 +295,28 @@ namespace SPH
 			}
 		}
 		for(k = 0; k < total_num; k++){
-			i = (int)(Nodes[k].position.getx() / dx);
-			j = (int)(Nodes[k].position.gety() / dy);
-			r = (int)(Nodes[k].position.getz() / dz);
-			if(i < 0 || i > l){ std::cerr << "A particle flied out from x direction:" << Nodes[k].status << std::endl; continue; }
-			if(j < 0 || j > m){ std::cerr << "A particle flied out from y direction:" << Nodes[k].status << std::endl; continue; }
-			if(r < 0 || r > h){ std::cerr << "A particle flied out from z direction:" << Nodes[k].status << std::endl; continue; }
+			i = (int)(nodes[k].position.getx() / dx);
+			j = (int)(nodes[k].position.gety() / dy);
+			r = (int)(nodes[k].position.getz() / dz);
+			if(i < 0 || i > l){ std::cerr << "A particle flied out from x direction:" << nodes[k].status << std::endl; continue; }
+			if(j < 0 || j > m){ std::cerr << "A particle flied out from y direction:" << nodes[k].status << std::endl; continue; }
+			if(r < 0 || r > h){ std::cerr << "A particle flied out from z direction:" << nodes[k].status << std::endl; continue; }
 			idx_table[i][j][r].push_back(k);
 			m_grid_num[i][j][r] += 1;
 		}
 		for(k = 0; k < total_num; k++){
-			Nodes[k].force_vis = Vec3(0.0, 0.0, 0.0);
-			Nodes[k].neighbor_index.clear();
-			int comp_i = (int)(Nodes[k].position.getx() / dx);
-			int comp_j = (int)(Nodes[k].position.gety() / dy);
-			int comp_r = (int)(Nodes[k].position.getz() / dz);
+			nodes[k].force_vis = Vec3(0.0, 0.0, 0.0);
+			nodes[k].neighbor_index.clear();
+			int comp_i = (int)(nodes[k].position.getx() / dx);
+			int comp_j = (int)(nodes[k].position.gety() / dy);
+			int comp_r = (int)(nodes[k].position.getz() / dz);
 			for(i = ((comp_i >= m_ratio_h_dx) ? (comp_i - m_ratio_h_dx) : 0); i <= ((comp_i <= l - m_ratio_h_dx) ? (comp_i + m_ratio_h_dx) : l); i++){
 				for(j = ((comp_j >= m_ratio_h_dx) ? (comp_j - m_ratio_h_dx) : 0); j <= ((comp_j <= m - m_ratio_h_dx) ? (comp_j + m_ratio_h_dx) : m); j++){
 					for(r = ((comp_r >= m_ratio_h_dx) ? (comp_r - m_ratio_h_dx) : 0); r <= ((comp_r <= h - m_ratio_h_dx) ? (comp_r + m_ratio_h_dx) : h); r++){
 						for(int comp_index = 0; comp_index < m_grid_num[i][j][r]; comp_index++){
 							int neighbor_ID = idx_table[i][j][r][comp_index];
-							double r_sqnorm = (Nodes[k].position - Nodes[neighbor_ID].position).sqrNorm();
-							if(r_sqnorm <= m_h * m_h){ Nodes[k].neighbor_index.push_back(neighbor_ID); }
+							double r_sqnorm = (nodes[k].position - nodes[neighbor_ID].position).sqrNorm();
+							if(r_sqnorm <= m_h * m_h){ nodes[k].neighbor_index.push_back(neighbor_ID); }
 						}
 					}
 				}
@@ -327,17 +326,17 @@ namespace SPH
 		//step1:计算粒子的Non-Pressure加速度：
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			//Nodes[k].force_vis = Vec3(0.0, 0.0, 0.0); execute in step 0.
+			//nodes[k].force_vis = Vec3(0.0, 0.0, 0.0); execute in step 0.
 			//为什么只计算fluid的pressure加速度：因为边界条件不移动，没有必要；而刚体可以通过反作用力来直接给出
-			if(Nodes[k].isWall()){ continue; }
+			if(nodes[k].isWall()){ continue; }
 			compute_vis_accelerate(k);
 		}
 
 		//step2:更新粒子的速度
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			if(Nodes[k].isWall()){ continue; }
-			Nodes[k].velocity += (Nodes[k].force_vis / m_mass + Nodes[k].acc_ext) * m_dt;
+			if(nodes[k].isWall()){ continue; }
+			nodes[k].velocity += (nodes[k].force_vis / m_mass + nodes[k].acc_ext) * m_dt;
 		}
 
 		int iter_num = 0;
@@ -352,32 +351,32 @@ namespace SPH
 			//Step4: 计算粒子的压强：
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				Nodes[k].force_press = Vec3(0.0, 0.0, 0.0);
-				Nodes[k].p = m_KK * (pow(Nodes[k].rho / rho_L, (int)m_gamma) - 1.0);
-				if(Nodes[k].p < 0.0){ Nodes[k].p = 0.0; }
+				nodes[k].force_press = Vec3(0.0, 0.0, 0.0);
+				nodes[k].pressure = m_KK * (pow(nodes[k].rho / rho_L, (int)m_gamma) - 1.0);
+				if(nodes[k].pressure < 0.0){ nodes[k].pressure = 0.0; }
 			}
 
 			//step5:计算粒子的Pressure加速度：
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				//Nodes[k].acc_press = Vec3(0.0, 0.0, 0.0); execute in step 4.
+				//nodes[k].acc_press = Vec3(0.0, 0.0, 0.0); execute in step 4.
 				//为什么只计算fluid的pressure加速度：因为边界条件不移动，没有必要；而刚体可以通过反作用力来直接给出
-				if(!Nodes[k].isFluid()){ continue; }
+				if(!nodes[k].isFluid()){ continue; }
 				compute_press_accelerate(k);
 			}
 
 			//step6:更新粒子的速度
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				if(!Nodes[k].isFluid()){ continue; }
-				Nodes[k].velocity += Nodes[k].force_press * (m_dt / m_mass);
+				if(!nodes[k].isFluid()){ continue; }
+				nodes[k].velocity += nodes[k].force_press * (m_dt / m_mass);
 			}
 
 			//Check if we can break out the iteration:
 			rho_error = 0.0;
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				rho_error += (Nodes[k].rho - rho_L) * (Nodes[k].rho - rho_L);
+				rho_error += (nodes[k].rho - rho_L) * (nodes[k].rho - rho_L);
 			}
 			rho_error = sqrt(rho_error);
 			if(rho_error < 0.1){ break; }
@@ -385,21 +384,21 @@ namespace SPH
 		std::cerr << "rho_error: " << rho_error << std::endl;
 
 		//step6.5:更新刚体运动
-		m_rigidbody.update(m_dt);
-		double dTheta_dt = m_rigidbody.swirl_velocity;
+		rigidbody.update(m_dt);
+		double dTheta_dt = rigidbody.swirl_velocity;
 		double dTheta = dTheta_dt * m_dt;
 		double cosdTheta = cos(dTheta), sindTheta = sin(dTheta);
 #pragma omp parallel for private(k,i)
-		for(i = 0; i < m_rigidbody.particle_indexes.size(); i++){
-			k = m_rigidbody.particle_indexes[i];
-			double local_x = Nodes[k].position.getx() - m_rigidbody.position.getx();
-			double local_y = Nodes[k].position.gety() - m_rigidbody.position.gety();
+		for(i = 0; i < rigidbody.particle_indexes.size(); i++){
+			k = rigidbody.particle_indexes[i];
+			double local_x = nodes[k].position.getx() - rigidbody.position.getx();
+			double local_y = nodes[k].position.gety() - rigidbody.position.gety();
 			double r_norm = sqrt(local_x * local_x + local_y * local_y);
 			double costheta = local_x / r_norm, sintheta = local_y / r_norm;
 			//update:
-			Nodes[k].setplace((costheta * cosdTheta - sintheta * sindTheta) * r_norm + m_rigidbody.position.getx(),
-				(sintheta * cosdTheta + costheta * sindTheta) * r_norm + m_rigidbody.position.gety(),
-				Nodes[k].position.getz());
+			nodes[k].setPosition((costheta * cosdTheta - sintheta * sindTheta) * r_norm + rigidbody.position.getx(),
+				(sintheta * cosdTheta + costheta * sindTheta) * r_norm + rigidbody.position.gety(),
+				nodes[k].position.getz());
 		}
 		Mat3 RotationMat(std::vector<Vec3>{Vec3(cosdTheta, -sindTheta, 0.0),
 			Vec3(sindTheta, cosdTheta, 0.0),
@@ -412,32 +411,32 @@ namespace SPH
 		//step7:更新粒子的位置：
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			if(!Nodes[k].isFluid()){ continue; }
-			Nodes[k].position += Nodes[k].velocity * m_dt;
+			if(!nodes[k].isFluid()){ continue; }
+			nodes[k].position += nodes[k].velocity * m_dt;
 			if(boundary_band[0] == 'P'){ //Left
-				if(Nodes[k].position.getx() < 0){ Nodes[k].position += Vec3(Lx, 0.0, 0.0); }
+				if(nodes[k].position.getx() < 0){ nodes[k].position += Vec3(x_bound, 0.0, 0.0); }
 			}
 			if(boundary_band[1] == 'P'){ //Right
-				if(Nodes[k].position.getx() > Lx){ Nodes[k].position += Vec3(-Lx, 0.0, 0.0); }
+				if(nodes[k].position.getx() > x_bound){ nodes[k].position += Vec3(-x_bound, 0.0, 0.0); }
 			}
 			if(boundary_band[2] == 'P'){ //Forward
-				if(Nodes[k].position.gety() < 0){ Nodes[k].position += Vec3(0.0, Ly, 0.0); }
+				if(nodes[k].position.gety() < 0){ nodes[k].position += Vec3(0.0, y_bound, 0.0); }
 			}
 			if(boundary_band[3] == 'P'){ //Back
-				if(Nodes[k].position.gety() > Ly){ Nodes[k].position += Vec3(0.0, -Ly, 0.0); }
+				if(nodes[k].position.gety() > y_bound){ nodes[k].position += Vec3(0.0, -y_bound, 0.0); }
 			}
 			if(boundary_band[4] == 'P'){ //Down
-				if(Nodes[k].position.getz() < 0){ Nodes[k].position += Vec3(0.0, 0.0, Lz); }
+				if(nodes[k].position.getz() < 0){ nodes[k].position += Vec3(0.0, 0.0, z_bound); }
 			}
 			if(boundary_band[5] == 'P'){ //Up
-				if(Nodes[k].position.getz() > Lz){ Nodes[k].position += Vec3(0.0, 0.0, -Lz); }
+				if(nodes[k].position.getz() > z_bound){ nodes[k].position += Vec3(0.0, 0.0, -z_bound); }
 			}
 		}
 
 		Vmax = 0.0;
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			double u_maxAbsCoord = Nodes[k].velocity.maxAbsCoord();
+			double u_maxAbsCoord = nodes[k].velocity.maxAbsCoord();
 			Vmax = Vmax > u_maxAbsCoord ? Vmax : u_maxAbsCoord;
 		}
 		//update m_dt:
@@ -459,25 +458,25 @@ namespace SPH
 		fout << "Number of particles = " << total_num << std::endl;
 		fout << "A = 1 Angstrom (basic length-scale)" << std::endl;
 
-		fout << "H0(1,1) = " << Lx * 100 << " A" << std::endl;
+		fout << "H0(1,1) = " << x_bound * 100 << " A" << std::endl;
 		fout << "H0(1,2) = " << 0 << " A" << std::endl;
 		fout << "H0(1,3) = " << 0 << " A" << std::endl;
 
 		fout << "H0(2,1) = " << 0 << " A" << std::endl;
-		fout << "H0(2,2) = " << Ly * 100 << " A" << std::endl;
+		fout << "H0(2,2) = " << y_bound * 100 << " A" << std::endl;
 		fout << "H0(2,3) = " << 0 << " A" << std::endl;
 
 		fout << "H0(3,1) = " << 0 << " A" << std::endl;
 		fout << "H0(3,2) = " << 0 << " A" << std::endl;
-		fout << "H0(3,3) = " << Lz * 100 << " A" << std::endl;
+		fout << "H0(3,3) = " << z_bound * 100 << " A" << std::endl;
 
 		fout << ".NO_VELOCITY." << std::endl;
 		fout << "entry_count = " << 3 << std::endl;
 
 		for(int k = 0; k < total_num; k++){
 			fout << m_mass << std::endl; // mass
-			fout << Nodes[k].status << std::endl; // element type
-			fout << Nodes[k].position.getx() * 100 << " " << Nodes[k].position.gety() * 100 << " " << Nodes[k].position.getz() * 100 << std::endl; // Info of position.
+			fout << nodes[k].status << std::endl; // element type
+			fout << nodes[k].position.getx() * 100 << " " << nodes[k].position.gety() * 100 << " " << nodes[k].position.getz() * 100 << std::endl; // Info of position.
 		}
 
 		fout.close();
@@ -529,9 +528,9 @@ namespace SPH
 		}
 		int cnt = 0;
 		for(int k = 0; k < total_num; k++){
-			if(Nodes[k].status == 'W' || Nodes[k].status == 'R') continue; // note Wall or Rigid Body
+			if(nodes[k].status == "Wall" || nodes[k].status == "RigidBody") continue; // note Wall or Rigid Body
 			cnt++;
-			ss << Nodes[k].position.getx() << " " << Nodes[k].position.gety() << " " << Nodes[k].position.getz() << endl;
+			ss << nodes[k].position.getx() << " " << nodes[k].position.gety() << " " << nodes[k].position.getz() << endl;
 		}
 		fout << "ply" << endl;
 		fout << "format ascii 1.0" << endl;
@@ -554,11 +553,11 @@ namespace SPH
 		for(int k = 0; k < 13; k++){
 			//line1: Number of particles = {$total_num}
 			//line2: A = 1 Angstrom (basic length-scale)
-			//line3: H0(1,1) = {$Lx * 100} A
+			//line3: H0(1,1) = {$x_bound * 100} A
 			//line4: H0(1,2) = 0 A
 			//line5: H0(1,3) = 0 A
 			//line6: H0(2,1) = 0 A
-			//line7: H0(2,2) = {$Ly * 100} A
+			//line7: H0(2,2) = {$y_bound * 100} A
 			//line8: H0(2,3) = 0 A
 			//line9: H0(3,1) = 0 A
 			//line10: H0(3,2) = 0 A
@@ -569,13 +568,13 @@ namespace SPH
 		}
 		int k = 0;
 		double in_x, in_y, in_z;
-		char status;
+		std::string status;
 		while(k != total_num){
 			fin >> m_mass;
 			fin >> status;
-			Nodes[k].set_status(status);
+			nodes[k].setStatus(status);
 			fin >> in_x >> in_y >> in_z;
-			Nodes[k].setplace(in_x / 100.0, in_y / 100.0, in_z / 100.0);
+			nodes[k].setPosition(in_x / 100.0, in_y / 100.0, in_z / 100.0);
 			k++;
 		}
 		std::cout << "m_step: " << m_step << ", total_num: " << total_num << std::endl;
@@ -613,33 +612,19 @@ namespace SPH
 		glEnd();
 		//绘制流场外围结束
 
-		GLfloat* vertices = nullptr;
-		vertices = (GLfloat*)malloc(3 * total_num * (sizeof(GLfloat)));
 		for(i = total_num - 1; i >= 0; i--){
 			glColor3f(0.5f, 0.5f, 1.0f);
-			if(Nodes[i].isWall()){
+			if(nodes[i].isWall()){
 				continue;
 			}
-			if(Nodes[i].isRigidBody()){
+			if(nodes[i].isRigidBody()){
 				glColor3f(1.0f, 1.0f, 0.0f);
 			}
-			//if (Nodes[i].position[0] < 0 || Nodes[i].position[0] > Lx) { continue; }
-			//if (Nodes[i].position[1] < 0 || Nodes[i].position[1] > Ly) { continue; }
-			//if (Nodes[i].position[2] < 0 || Nodes[i].position[2] > Lz) { continue; }
 			glPushMatrix();
-			glTranslated(Nodes[i].position.getx() / dx, Nodes[i].position.gety() / dy, Nodes[i].position.getz() / dz);
+			glTranslated(nodes[i].position.getx() / dx, nodes[i].position.gety() / dy, nodes[i].position.getz() / dz);
 			glutSolidSphere(radius, 6, 6);
 			glPopMatrix();
-
-			//glVertex3f(Nodes[i].position[0] / dx, Nodes[i].position[1] / dy, Nodes[i].position[2] / dz);
-
-			//*(vertices + 3 * i + 0) = Nodes[i].position[0] / dx;
-			//*(vertices + 3 * i + 1) = Nodes[i].position[1] / dy;
-			//*(vertices + 3 * i + 2) = Nodes[i].position[2] / dz;
 		}
-
-		//if(m_openglcontext != nullptr)
-			//m_openglcontext->VBO_bind<GLfloat>(vertices);
 
 		return;
 	}
@@ -659,9 +644,9 @@ namespace SPH
 			stringstream ss;
 			ss << std::setfill('0') << std::setw(4) << m_step / Nwri;
 			if(if_dump == 1){ dump_file(string("data") + ss.str() + ".cfg"); }
-			else if(if_dump == 3){ dump_ply_file("../output/liquid/" + ss.str() + ".ply"); }
+			else if(if_dump == 3){ dump_ply_file("../output/liquid_vis0/" + ss.str() + ".ply"); }
 			// in all cases dump wheel 
-			dump_wheel_ply("../output/wheel/" + ss.str() + ".ply");
+			// dump_wheel_ply("../output/wheel/" + ss.str() + ".ply"); // do not have to
 
 		}
 	}

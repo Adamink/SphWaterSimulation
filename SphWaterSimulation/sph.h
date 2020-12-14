@@ -11,22 +11,24 @@
 #include "particle.h"
 #include "vec3.h"
 #include "rigid_body.h"
+#include "constants.h"
 
 using namespace std;
 
 namespace SPH
 {
-	//盒子的大小：x=0,x=l,y=0,y=m.z=0,z=h,内部点为(l)*(m)*(h)个. | The size of Box: x=[0, l], y = [0, m], z = [0, h]
-	static const int l = 30, m = 60, h = 40;
-	static const double  Lx = 3.0, Ly = 6.0, Lz = 4.0;
-	//定义pi的值 | Define the value of pi
-	static const double pi = 3.14159265358979323846264338327950;
-	static const Vec3 g_accelerate = Vec3(0.0, 0.0, -9.8); //重力加速度 | The gravity accelerate.
+	// Define the size of bounding box of simulation with x in [0, x_bound], y in [0, y_bound], z in [0, z_bound].
+	static const double x_bound = sph_const::kXBound, y_bound = sph_const::kYBound, z_bound = sph_const::kZBound;
+
+	// Define the number of particles, and in total l x m x h particles are inited on 3d-grids.
+	static const int l = sph_const::kXParticleNum, m = sph_const::kYParticleNum, h = sph_const::kZParticleNum;
+	static const Vec3 g_gravity = Vec3(0.0, 0.0, -sph_const::kGravity);
 
 	class Sph{
 	public:
-		vector<Particle> Nodes; //fluid nodes and bounadry nodes
-		Wheel m_rigidbody;
+		// Stores liquid nodes, wall nodes and rigidbody nodes together.
+		vector<Particle> nodes;
+		Wheel rigidbody;
 		vector<Vec3> old_u;
 		vector<int> idx_table[l + 1][m + 1][h + 1]; //一张索引表，存放了每个网格内部包含点的索引 \
 			                                        //| A index table, which stored all the index of particles in corresponding grids.
@@ -45,7 +47,7 @@ namespace SPH
 		double rho_L; //初始的流体密度 | The initial density of fluid.
 		double rho_R; //初始的刚体密度 | The initial density of rigid body.
 		int total_num; //初始粒子总数为0 | The initial number of all the particles is 0.
-		double p0; //初始压强 | The initial pressure of particles.
+		double init_pressure; //初始压强 | The initial pressure of particles.
 		double vis0; //初始粘度 | The initial viscosity of particles.
 		std::string boundary_band; //including 6 char, denotes the boundary of Left/Right/Forward/Back/Down/Up\
 								   // P: Periodical; W: Wall.
@@ -60,33 +62,32 @@ namespace SPH
 
 		Sph():
 			m_ratio_h_dx(2),
-			dx(Lx / l),
-			dy(Ly / m),
-			dz(Lz / h),
+			dx(x_bound / l),
+			dy(y_bound / m),
+			dz(z_bound / h),
 			m_lambda(0.4),
 			m_stiffness(1000.0),
 			m_mass(1.0),
 			m_gamma(1.0),
 			radius(0.4),
 			total_num(0),
-			p0(0.0),
-			vis0(0.002),
+			init_pressure(0.0),
+			vis0(0.000),
 			Vmax(0.0),
-			boundary_band("WWWWWW"),
 			if_dump(3),
-			Nwri(1),
+			Nwri(5),
 			m_step(0),
-			t_max(5000){
+			t_max(1000){
 			m_h = m_ratio_h_dx * dx;
 			rho_L = m_mass / dx / dy / dz;
 			rho_R = 300.0;
 			m_dt = m_lambda * m_h / sqrt(m_stiffness);
 			m_KK = m_stiffness * rho_L / m_gamma;
-			m_Kpoly6 = 315 / ((64 * pi) * pow(m_h, 9));
-			a_Kpoly6 = 45 / (pi * pow(m_h, 6));
-			vis_Kpoly6 = 15.0 / (2.0 * pi * pow(m_h, 3));
-			//m_rigidbody = Sphere(rho_R, Ly / 6.0, Vec3(Lx / 2.0, 2.0 * Ly / 3.0, Ly / 6.0 + 2 * dx));
-			m_rigidbody = Wheel(rho_R, Lx / 6.0, Lx / 12.0, Lz / 5.0, Vec3(Lx / 2.0, Ly / 2.0, 0.0), 4);
+			m_Kpoly6 = 315 / ((64 * math_const::PI) * pow(m_h, 9));
+			a_Kpoly6 = 45 / (math_const::PI * pow(m_h, 6));
+			vis_Kpoly6 = 15.0 / (2.0 * math_const::PI * pow(m_h, 3));
+			//rigidbody = Sphere(rho_R, y_bound / 6.0, Vec3(x_bound / 2.0, 2.0 * y_bound / 3.0, y_bound / 6.0 + 2 * dx));
+			rigidbody = Wheel(rho_R, x_bound / 6.0, x_bound / 12.0, z_bound / 5.0, Vec3(x_bound / 2.0, y_bound / 2.0, 0.0), 4);
 			for(int i = 0; i <= l; i++){
 				for(int j = 0; j <= m; j++){
 					for(int r = 0; r <= h; r++){
@@ -95,10 +96,10 @@ namespace SPH
 				}
 			}
 
-			initialization();
+			init();
 		}
 
-		void initialization();
+		void init();
 
 		void compute_press_accelerate(int k);
 
@@ -106,10 +107,12 @@ namespace SPH
 
 		void Compute_Rho(int k);
 
-		void Set_BoundaryNodes();
-		void set_mesh_for_RigidBody();
+		void setWallNodes();
+		void setRigidBodyMesh();
+		void setRigidBodyNodes();
+		void setLiquidNodes();
 
-		void add_node(int i, int j, int r, char status);
+		void addNode(int i, int j, int r, std::string status);
 
 		void dump_file(string file_name);
 		void dump_obj_file(string file_name);

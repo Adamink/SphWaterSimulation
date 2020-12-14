@@ -8,7 +8,6 @@
 #include "sph.h"
 
 SPH::Sph* sph0 = new SPH::Sph();
-#define NUM_THREADS 4
 
 bool Compute_code = true;
 bool Read_file = !Compute_code;
@@ -27,9 +26,8 @@ void init(void){
 
 static void display(void){
 	init();
-
-	if(Compute_code){ sph0->step(); }
-	else if(Read_file){ sph0->OnlyReadFileStep(); }
+	if(program_const::READ_FROM_FILES){ sph0->OnlyReadFileStep(); }
+	else{ sph0->step(); }
 
 	if(sph0->getstep() > sph0->getMaxstep()){
 		system("pause");
@@ -44,7 +42,7 @@ static void idle(void){
 }
 
 int main(int argc, char* argv[]){
-	omp_set_num_threads(NUM_THREADS);
+	omp_set_num_threads(program_const::NUM_THREADS_COMPUTING);
 	glutInit(&argc, argv);
 	glutInitWindowSize(600, 600);
 	glutInitWindowPosition(10, 10);

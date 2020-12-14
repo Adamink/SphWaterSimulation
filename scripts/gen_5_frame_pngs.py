@@ -1,8 +1,8 @@
 import os
 from glob import glob
 
-input_fd = './output/meshed_liquid/c0.5p0.05k10.0s0.6_5/'
-output_fd = './output/meshed_liquid/c0.5p0.05k10.0s0.6_5div5/'
+input_fd = './output/wheel/'
+output_fd = './output/wheel_div5/'
 
 if not os.path.exists(output_fd):
     os.makedirs(output_fd)

@@ -3,15 +3,16 @@ from datetime import datetime
 
 
 class MeshGenerator:
-    def __init__(self, debug=False, parent_fd='./output/', sub_fd='liquid',
+    def __init__(self, debug=False,
+                 parent_fd='./output/', in_fd='liquid_vis0', out_fd='meshed_liquid_vis0',
                  cube_size=0.5, particle_radius=0.05, kernel_radius=10.0, sufrace_threshold=0.6):
 
-        setting_str = f"c{cube_size}p{particle_radius}k{kernel_radius}s{sufrace_threshold}_5"
-        output_fd = os.path.join(parent_fd, "meshed_liquid", setting_str)
-        self.log_file = os.path.join(parent_fd, setting_str + '.log')
+        setting_str = f"c{cube_size}p{particle_radius}k{kernel_radius}s{sufrace_threshold}"
+        sub_fd = os.path.join(parent_fd, out_fd, setting_str)
+        self.log_file = os.path.join(parent_fd, out_fd, setting_str + '.log')
 
-        if not os.path.exists(output_fd):
-            os.makedirs(output_fd)
+        if not os.path.exists(sub_fd):
+            os.makedirs(sub_fd)
 
         param_str = f" --cube-size={cube_size} --particle-radius={particle_radius}" + \
             f" --kernel-radius={kernel_radius} --surface-threshold={sufrace_threshold}"
@@ -19,14 +20,14 @@ class MeshGenerator:
         if debug:
             frameRange = range(10, 20)
         else:
-            frameRange = range(1030, 5000, 5)
+            frameRange = range(1, 201, 1)
 
         for frame in frameRange:
             file_pth = os.path.join(
-                parent_fd, sub_fd, "{:04d}.ply".format(frame))
+                parent_fd, in_fd, "{:04d}.ply".format(frame))
             index = os.path.basename(file_pth).split('.')[0]
             vtk_pth = os.path.join(parent_fd, index + '.vtk')
-            output_pth = os.path.join(output_fd, index + ".obj")
+            output_pth = os.path.join(sub_fd, index + ".obj")
 
             self.log("Processing frame {:04d}...".format(frame))
             if not os.path.exists(file_pth):
