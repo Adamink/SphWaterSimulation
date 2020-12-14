@@ -26,15 +26,17 @@ namespace SPH
 
 	class Sph{
 	public:
-		// Stores liquid nodes, wall nodes and rigidbody nodes together.
+		bool use_rigid_body;
+		bool if_visualize;
+		bool read_from_file;
+		// Store liquid nodes, wall nodes and rigidbody nodes together.
 		vector<Particle> nodes;
+		// Store all the index of particles in corresponding grids
+		vector<int> idx_table[l + 1][m + 1][h + 1];
 		Wheel rigidbody;
-		vector<Vec3> old_u;
-		vector<int> idx_table[l + 1][m + 1][h + 1]; //一张索引表，存放了每个网格内部包含点的索引 \
-			                                        //| A index table, which stored all the index of particles in corresponding grids.
+		vector<Vec3> prevVelocity;
 		int m_grid_num[l + 1][m + 1][h + 1];
-		int m_step; //当前已运行步数 | The step number
-		int t_max;//最大的迭代计算步数 | The max steps this programm run.
+		int m_step;  // Current step number
 		int m_ratio_h_dx; // = h/dx
 		double m_h, m_dt, m_lambda, m_stiffness, m_KK, m_gamma;
 		double dx, dy, dz;
@@ -42,18 +44,19 @@ namespace SPH
 		double a_Kpoly6;
 		double vis_Kpoly6;
 		double Vmax; //流场中的最大速度 | The max velocity of the fluid region.
-		double radius; //绘制图像时的小球半径 | The radius of sphere while drawing the picture.
+		double radius; //绘制图像时的小球半径 | The radius of sphere while draw the picture.
 		double m_mass; //初始流体质量 | The initial mass of fluid particles.
 		double rho_L; //初始的流体密度 | The initial density of fluid.
 		double rho_R; //初始的刚体密度 | The initial density of rigid body.
 		int total_num; //初始粒子总数为0 | The initial number of all the particles is 0.
 		double init_pressure; //初始压强 | The initial pressure of particles.
-		double vis0; //初始粘度 | The initial viscosity of particles.
-		std::string boundary_band; //including 6 char, denotes the boundary of Left/Right/Forward/Back/Down/Up\
-								   // P: Periodical; W: Wall.
+		double viscosity; //初始粘度 | The initial viscosity of particles.
 
-		int if_dump; //是否要在运行过程中输出文件 | If we need to dump density files while we are running the code.
-		int Nwri; // 每隔多少步输出一次文件 | Every "Nwri" steps passed, a density file will be dumped.
+		// Including 6 char, each denoting the boundary type of Left/Right/Forward/Back/Down/Up,
+		// where 'P' stands for Periodical and 'W' stands for Wall
+		std::string boundary_band;
+
+		int dump_file_interval; // 每隔多少步输出一次文件 | Every "dump_file_interval" steps passed, a density file will be dumped.
 
 		std::vector<Vec3> vertex_localcoord; //存储顶点坐标，坐标系是本地坐标系，即坐标原点在螺旋桨的中心轴上
 										//| Store vertex coordinates: A local coordiante, which means the coordinates center is the wheel center
@@ -61,6 +64,9 @@ namespace SPH
 		Vec3 translate_vertex;
 
 		Sph():
+			use_rigid_body(program_const::kUseRigidBody),
+			if_visualize(program_const::IF_VISUALIZE),
+			read_from_file(program_const::READ_FROM_FILES),
 			m_ratio_h_dx(2),
 			dx(x_bound / l),
 			dy(y_bound / m),
@@ -72,12 +78,10 @@ namespace SPH
 			radius(0.4),
 			total_num(0),
 			init_pressure(0.0),
-			vis0(0.000),
+			viscosity(sph_const::kViscosity),
 			Vmax(0.0),
-			if_dump(3),
-			Nwri(5),
-			m_step(0),
-			t_max(1000){
+			dump_file_interval(program_const::kDumpFileInterval),
+			m_step(0){
 			m_h = m_ratio_h_dx * dx;
 			rho_L = m_mass / dx / dy / dz;
 			rho_R = 300.0;
@@ -96,43 +100,46 @@ namespace SPH
 				}
 			}
 
-			init();
+			initNodes();
 		}
 
-		void init();
+		void initNodes();
 
-		void compute_press_accelerate(int k);
+		void computePressureAccelerate(int k);
 
-		void compute_vis_accelerate(int k);
+		void computeVisAccerlerate(int k);
 
-		void Compute_Rho(int k);
+		void computeDensity(int k);
 
 		void setWallNodes();
 		void setRigidBodyMesh();
 		void setRigidBodyNodes();
 		void setLiquidNodes();
 
+		void updateRigidBody();
 		void addNode(int i, int j, int r, std::string status);
 
-		void dump_file(string file_name);
-		void dump_obj_file(string file_name);
-		void dump_ply_file(string file_name);
-		void dump_wheel_ply(string file_name);
-		bool read_file(string file_name);
+		std::string getFilePath(std::string command);
+		void dumpLiquidAsCfg(std::string file_path);
+		void dumpLiquidAsPly(std::string file_path);
+		void dumpRigidBody(std::string file_path);
+		bool readLiquidFromCfg(std::string file_path);
 
-		void drawing_liquid(void);
+		void draw();
+		void drawBoundingBox();
+		void drawRigidBody();
+		void drawLiquid();
 
-		double comp_error();
+		double getError();
 
-		void record_velocity();
+		void recordVelocity();
 
-		void compute(void);
+		void compute();
 
 		void step();
-		void OnlyReadFileStep();
+		void readFileAndShow();
 
-		int getstep(){ return m_step; }
-		int getMaxstep(){ return t_max; }
+		int getStep(){ return m_step; }
 
 		double Muller03Kernel_Basic(Vec3 origin_point, Vec3 detect_point){
 			double r_square_norm = (detect_point - origin_point).sqrNorm();

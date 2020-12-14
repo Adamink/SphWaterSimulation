@@ -1,6 +1,7 @@
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 
+#include <string>
 #include "vec3.h"
 
 namespace program_const
@@ -9,11 +10,28 @@ namespace program_const
     const bool READ_FROM_FILES = false;
     // Number of threads for SPH simulation
     const int NUM_THREADS_COMPUTING = 4;
-}
+    const bool IF_VISUALIZE = true;
 
+    const std::string DUMP_FOLDER("../output/norigidbody_vis0.02/");
+    const std::string CFG_SUBFOLDER = DUMP_FOLDER + "liquid_cfg/";
+    const std::string PLY_SUBFOLDER = DUMP_FOLDER + "liquid_ply/";
+    const std::string RIGIDBODY_SUBFOLDER = DUMP_FOLDER + "rigidbody_ply/";
+
+    const int kInitWindowSizeX = 600, kInitWindowSizeY = 600;
+    const int kInitWindowPositionX = 10, kInitWindowPositionY = 10;
+
+    const int kTotalStep = 2000;
+    const bool kUseRigidBody = false;
+
+    const int kDumpFileInterval = 5;
+    const bool kDumpLiquidAsCfg = false;
+    const bool kDumpLiquidAsPly = true;
+    const bool kDumpRigidBody = false;
+}
 
 namespace sph_const
 {
+
     const double kXBound = 3.0;
     const double kYBound = 6.0;
     const double kZBound = 4.0;
@@ -23,6 +41,8 @@ namespace sph_const
     const int kZParticleNum = 40;
 
     const double kGravity = 9.8;
+
+    const double kViscosity = 0.02;
 }
 
 namespace math_const

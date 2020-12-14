@@ -45,7 +45,7 @@ public:
 	bool isRigidBody(){
 		return status == "RigidBody";
 	}
-	bool isFluid(){
+	bool isLiquid(){
 		return status == "Liquid";
 	}
 };

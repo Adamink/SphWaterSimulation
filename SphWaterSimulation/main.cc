@@ -7,12 +7,9 @@
 #include "constants.h"
 #include "sph.h"
 
-SPH::Sph* sph0 = new SPH::Sph();
+static SPH::Sph* sph_instance;
 
-bool Compute_code = true;
-bool Read_file = !Compute_code;
-
-void init(void){
+static void initGLutWindow(){
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -24,39 +21,42 @@ void init(void){
 	gluLookAt(eyex, eyey, eyez, centerx, centery, centerz, upx, upy, upz);
 }
 
-static void display(void){
-	init();
-	if(program_const::READ_FROM_FILES){ sph0->OnlyReadFileStep(); }
-	else{ sph0->step(); }
-
-	if(sph0->getstep() > sph0->getMaxstep()){
-		system("pause");
+static void display(){
+	initGLutWindow();
+	sph_instance->step();
+	if(sph_instance->getStep() > program_const::kTotalStep){
 		exit(0);
 	}
-
 	glutSwapBuffers();
 }
 
-static void idle(void){
+static void idle(){
 	glutPostRedisplay();
 }
 
+static void runWithNoVisualization(){
+	while(sph_instance->getStep() <= program_const::kTotalStep){
+		sph_instance->step();
+	}
+}
 int main(int argc, char* argv[]){
-	omp_set_num_threads(program_const::NUM_THREADS_COMPUTING);
-	glutInit(&argc, argv);
-	glutInitWindowSize(600, 600);
-	glutInitWindowPosition(10, 10);
-	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH | GLUT_STENCIL);
-
-	glutCreateWindow("SPH method");
-
-	init();
-
-	glutDisplayFunc(display);
-	glutIdleFunc(idle);
-
-	glutMainLoop();
-
-	return EXIT_SUCCESS;
+	using namespace program_const;
+	omp_set_num_threads(NUM_THREADS_COMPUTING);
+	sph_instance = new SPH::Sph();
+	if(IF_VISUALIZE){
+		glutInit(&argc, argv);
+		glutInitWindowSize(kInitWindowSizeX, kInitWindowSizeY);
+		glutInitWindowPosition(kInitWindowPositionX, kInitWindowPositionY);
+		glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH | GLUT_STENCIL);
+		glutCreateWindow("SphWaterSimulation");
+		initGLutWindow();
+		glutDisplayFunc(display);
+		glutIdleFunc(idle);
+		glutMainLoop();
+	}
+	else{
+		runWithNoVisualization();
+	}
+	return 0;
 }
 

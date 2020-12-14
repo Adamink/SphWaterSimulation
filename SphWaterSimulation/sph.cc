@@ -5,46 +5,49 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
-
-#include "constants.h"
+#include <cassert>
 
 namespace SPH
 {
-	void Sph::init(){
-		Particle temp_node(rho_L, init_pressure, g_gravity);
-		// 1. Set "Wall" nodes as the bounding box.
+	void Sph::initNodes(){
+		// Set the bounding box as "Wall" nodes
 		setWallNodes();
-		// 2. Set "RigidBody" nodes as the wheel, as well as the meshes for rendering.
-		setRigidBodyMesh();
-		setRigidBodyNodes();
-		// 3. Set "Liquid" nodes as the water.
+		// Set the wheel as "RigidBody" nodes, as well as the meshes for rendering.
+		if(use_rigid_body){
+			setRigidBodyMesh();
+			setRigidBodyNodes();
+		}
+		// Set the water as "Liquid" nodes
 		setLiquidNodes();
 
 		std::cout << "The total number of particles: " << total_num << std::endl;
-		old_u = std::vector<Vec3>(total_num, Vec3(0.0, 0.0, 0.0));
+		prevVelocity = std::vector<Vec3>(total_num, Vec3(0.0, 0.0, 0.0));
 	}
 
-	// Register a node of different kinds to 'nodes' as well as 'idx_table' during init().
-	// If the node is rigidbody
-	void Sph::addNode(int i, int j, int r, std::string status){
-		// Rigidbody and wall nodes takes the first priority.
-		if(m_grid_num[i][j][r] == 1){
-			if(status != "Liquid"){
-				if(!nodes[idx_table[i][j][r][0]].isRigidBody() && status == "RigidBody"){
-					rigidbody.particle_indexes.push_back(idx_table[i][j][r][0]);
-				}
-				nodes[idx_table[i][j][r][0]].setStatus(status);
-			}
-			return;
+	void Sph::step(){
+		if(read_from_file){
+			readFileAndShow();
 		}
-		Particle temp_node(rho_L, init_pressure, g_gravity);
-		// Register the index of particle to 'idx_table'.
-		idx_table[i][j][r].push_back(total_num++);
-		temp_node.setPosition(i * dx, j * dy, r * dz);
-		temp_node.setStatus(status);
-		nodes.push_back(temp_node);//Push new node into node list.
-		if(temp_node.isRigidBody()){ rigidbody.particle_indexes.push_back(nodes.size() - 1); }
-		m_grid_num[i][j][r] = 1;
+		else{
+			recordVelocity();
+			if(if_visualize)
+				draw();
+			compute();
+			std::cout << "step " << m_step << std::endl;
+			if(m_step++ % dump_file_interval == 0){
+				std::cout << "=====================" << std::endl;
+				std::cout << "step: " << m_step << ";  error: " << getError() << std::endl;
+				if(program_const::kDumpLiquidAsCfg){
+					dumpLiquidAsCfg(getFilePath("dumpLiquidAsCfg"));
+				}
+				if(program_const::kDumpLiquidAsPly){
+					dumpLiquidAsPly(getFilePath("dumpLiquidAsPly"));
+				}
+				if(program_const::kDumpRigidBody){
+					dumpRigidBody(getFilePath("dumpRigidBoty"));
+				}
+			}
+		}
 	}
 
 	// Set "Wall" nodes as the bounding box
@@ -108,8 +111,39 @@ namespace SPH
 		}
 	}
 
+	void Sph::setLiquidNodes(){
+		for(int i = 0; i <= l; i++){
+			for(int j = 0; j < m / 3; j++){
+				for(int r = 0; r < 3 * h / 4; r++){
+					addNode(i, j, r, "Liquid");
+				}
+			}
+		}
+	}
 
-	// 
+	// Register a node of different kinds to 'nodes' as well as 'idx_table' during initNodes().
+	// If the node is rigidbody
+	void Sph::addNode(int i, int j, int r, std::string status){
+		// Rigidbody and wall nodes takes the first priority.
+		if(m_grid_num[i][j][r] == 1){
+			if(status != "Liquid"){
+				if(!nodes[idx_table[i][j][r][0]].isRigidBody() && status == "RigidBody"){
+					rigidbody.particle_indexes.push_back(idx_table[i][j][r][0]);
+				}
+				nodes[idx_table[i][j][r][0]].setStatus(status);
+			}
+			return;
+		}
+		Particle temp_node(rho_L, init_pressure, g_gravity);
+		// Register the index of particle to 'idx_table'.
+		idx_table[i][j][r].push_back(total_num++);
+		temp_node.setPosition(i * dx, j * dy, r * dz);
+		temp_node.setStatus(status);
+		nodes.push_back(temp_node);//Push new node into node list.
+		if(temp_node.isRigidBody()){ rigidbody.particle_indexes.push_back(nodes.size() - 1); }
+		m_grid_num[i][j][r] = 1;
+	}
+
 	void Sph::setRigidBodyMesh(){
 		double down_height = 2 * dz, up_height = rigidbody.m_wheel_height + 2 * dz;
 		double r_in = rigidbody.m_wheel_radius_insize, r_out = rigidbody.m_wheel_radius_outsize;
@@ -156,40 +190,30 @@ namespace SPH
 		}
 	}
 
-	void Sph::setLiquidNodes(){
-		for(int i = 0; i <= l; i++){
-			for(int j = 0; j < m / 3; j++){
-				for(int r = 0; r < 3 * h / 4; r++){
-					addNode(i, j, r, "Liquid");
-				}
-			}
-		}
-	}
-
-	void Sph::record_velocity(){
+	void Sph::recordVelocity(){
 		int k = 0;
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			old_u[k] = nodes[k].velocity;
+			prevVelocity[k] = nodes[k].velocity;
 		}
 	}
 
-	double Sph::comp_error(){
+	double Sph::getError(){
 		int k = 0;
 		double final_error = 0.0;
 
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			final_error += (old_u[k] - nodes[k].velocity).sqrNorm();
+			final_error += (prevVelocity[k] - nodes[k].velocity).sqrNorm();
 		}
 		return sqrt(final_error);
 	}
 
-	void Sph::compute_vis_accelerate(int k){
+	void Sph::computeVisAccerlerate(int k){
 		double Vb = 0.0;
 		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
 			int neighbor_ID = nodes[k].neighbor_index[i];
-			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+			if(!nodes[neighbor_ID].isLiquid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
 				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
@@ -204,27 +228,27 @@ namespace SPH
 
 			Vec3 Gradient_Wij = Gradient_Muller03Kernel_Pressure(nodes[k].position, nodes[neighbor_ID].position);
 			double u_dot_r = (nodes[k].velocity - nodes[neighbor_ID].velocity).dot(nodes[k].position - nodes[neighbor_ID].position);
-			if(nodes[neighbor_ID].isFluid()){
+			if(nodes[neighbor_ID].isLiquid()){
 				//fluid - fluid
-				nodes[k].force_vis += Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (m_mass * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
+				nodes[k].force_vis += Gradient_Wij * ((viscosity) * 2.0 * (3 + 2.0) * (m_mass * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
 			}
 			else{
 				//fluid - obstacle
 				double mass_rigid = m_mass;
-				Vec3 temp_force = Gradient_Wij * ((vis0) * 2.0 * (3 + 2.0) * (mass_rigid * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
+				Vec3 temp_force = Gradient_Wij * ((viscosity) * 2.0 * (3 + 2.0) * (mass_rigid * m_mass / nodes[neighbor_ID].rho) * u_dot_r / r_sqnorm);
 				nodes[k].force_vis += temp_force;
 				nodes[neighbor_ID].force_vis += -temp_force;
 			}
 		}
 	}
 
-	void Sph::compute_press_accelerate(int k){
+	void Sph::computePressureAccelerate(int k){
 		if(nodes[k].pressure < 0.0){ return; }
 
 		double Vb = 0.0;
 		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
 			int neighbor_ID = nodes[k].neighbor_index[i];
-			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+			if(!nodes[neighbor_ID].isLiquid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
 				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
@@ -253,13 +277,13 @@ namespace SPH
 		}
 	}
 
-	void Sph::Compute_Rho(int k){
+	void Sph::computeDensity(int k){
 		if(nodes[k].isWall()){ return; }
 		nodes[k].rho = 0.0;
 		double Vb = 0.0;
 		for(int i = 0; i < nodes[k].neighbor_index.size(); i++){
 			int neighbor_ID = nodes[k].neighbor_index[i];
-			if(!nodes[neighbor_ID].isFluid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
+			if(!nodes[neighbor_ID].isLiquid()){ //对运动刚体和固定边界的密度插值修正: Akinci et al. (2012).
 				Vb += Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 			}
 		}
@@ -269,7 +293,7 @@ namespace SPH
 			if((nodes[k].position - nodes[neighbor_ID].position).sqrNorm() > m_h * m_h){ continue; }
 
 			Vec3 Grad_W = Gradient_Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
-			if(!nodes[neighbor_ID].isFluid()){
+			if(!nodes[neighbor_ID].isLiquid()){
 				double mass_rigid = m_mass;
 				nodes[k].rho += mass_rigid * Muller03Kernel_Basic(nodes[k].position, nodes[neighbor_ID].position);
 				nodes[k].rho += mass_rigid * m_dt * (nodes[k].velocity - nodes[neighbor_ID].velocity).dot(Grad_W);
@@ -329,7 +353,7 @@ namespace SPH
 			//nodes[k].force_vis = Vec3(0.0, 0.0, 0.0); execute in step 0.
 			//为什么只计算fluid的pressure加速度：因为边界条件不移动，没有必要；而刚体可以通过反作用力来直接给出
 			if(nodes[k].isWall()){ continue; }
-			compute_vis_accelerate(k);
+			computeVisAccerlerate(k);
 		}
 
 		//step2:更新粒子的速度
@@ -345,7 +369,7 @@ namespace SPH
 			//SteVec3: 根据光滑核函数计算粒子的插值密度：
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				Compute_Rho(k);
+				computeDensity(k);
 			}
 
 			//Step4: 计算粒子的压强：
@@ -361,14 +385,14 @@ namespace SPH
 			for(k = 0; k < total_num; k++){
 				//nodes[k].acc_press = Vec3(0.0, 0.0, 0.0); execute in step 4.
 				//为什么只计算fluid的pressure加速度：因为边界条件不移动，没有必要；而刚体可以通过反作用力来直接给出
-				if(!nodes[k].isFluid()){ continue; }
-				compute_press_accelerate(k);
+				if(!nodes[k].isLiquid()){ continue; }
+				computePressureAccelerate(k);
 			}
 
 			//step6:更新粒子的速度
 #pragma omp parallel for private(k)
 			for(k = 0; k < total_num; k++){
-				if(!nodes[k].isFluid()){ continue; }
+				if(!nodes[k].isLiquid()){ continue; }
 				nodes[k].velocity += nodes[k].force_press * (m_dt / m_mass);
 			}
 
@@ -384,34 +408,14 @@ namespace SPH
 		std::cerr << "rho_error: " << rho_error << std::endl;
 
 		//step6.5:更新刚体运动
-		rigidbody.update(m_dt);
-		double dTheta_dt = rigidbody.swirl_velocity;
-		double dTheta = dTheta_dt * m_dt;
-		double cosdTheta = cos(dTheta), sindTheta = sin(dTheta);
-#pragma omp parallel for private(k,i)
-		for(i = 0; i < rigidbody.particle_indexes.size(); i++){
-			k = rigidbody.particle_indexes[i];
-			double local_x = nodes[k].position.getx() - rigidbody.position.getx();
-			double local_y = nodes[k].position.gety() - rigidbody.position.gety();
-			double r_norm = sqrt(local_x * local_x + local_y * local_y);
-			double costheta = local_x / r_norm, sintheta = local_y / r_norm;
-			//update:
-			nodes[k].setPosition((costheta * cosdTheta - sintheta * sindTheta) * r_norm + rigidbody.position.getx(),
-				(sintheta * cosdTheta + costheta * sindTheta) * r_norm + rigidbody.position.gety(),
-				nodes[k].position.getz());
+		if(use_rigid_body){
+			updateRigidBody();
 		}
-		Mat3 RotationMat(std::vector<Vec3>{Vec3(cosdTheta, -sindTheta, 0.0),
-			Vec3(sindTheta, cosdTheta, 0.0),
-			Vec3(0.0, 0.0, 1.0)});
-		for(i = 0; i < vertex_localcoord.size(); i++){
-			vertex_localcoord[i] = RotationMat.multiply(vertex_localcoord[i]);
-		}
-
 
 		//step7:更新粒子的位置：
 #pragma omp parallel for private(k)
 		for(k = 0; k < total_num; k++){
-			if(!nodes[k].isFluid()){ continue; }
+			if(!nodes[k].isLiquid()){ continue; }
 			nodes[k].position += nodes[k].velocity * m_dt;
 			if(boundary_band[0] == 'P'){ //Left
 				if(nodes[k].position.getx() < 0){ nodes[k].position += Vec3(x_bound, 0.0, 0.0); }
@@ -447,9 +451,70 @@ namespace SPH
 		return;
 	}
 
-	void Sph::dump_file(string file_name){
+	void Sph::updateRigidBody(){
+		rigidbody.update(m_dt);
+		double dTheta_dt = rigidbody.swirl_velocity;
+		double dTheta = dTheta_dt * m_dt;
+		double cosdTheta = cos(dTheta), sindTheta = sin(dTheta);
+		int k, i;
+#pragma omp parallel for private(k,i)
+		for(i = 0; i < rigidbody.particle_indexes.size(); i++){
+			k = rigidbody.particle_indexes[i];
+			double local_x = nodes[k].position.getx() - rigidbody.position.getx();
+			double local_y = nodes[k].position.gety() - rigidbody.position.gety();
+			double r_norm = sqrt(local_x * local_x + local_y * local_y);
+			double costheta = local_x / r_norm, sintheta = local_y / r_norm;
+			//update:
+			nodes[k].setPosition((costheta * cosdTheta - sintheta * sindTheta) * r_norm + rigidbody.position.getx(),
+				(sintheta * cosdTheta + costheta * sindTheta) * r_norm + rigidbody.position.gety(),
+				nodes[k].position.getz());
+		}
+		Mat3 RotationMat(std::vector<Vec3>{Vec3(cosdTheta, -sindTheta, 0.0),
+			Vec3(sindTheta, cosdTheta, 0.0),
+			Vec3(0.0, 0.0, 1.0)});
+		for(i = 0; i < vertex_localcoord.size(); i++){
+			vertex_localcoord[i] = RotationMat.multiply(vertex_localcoord[i]);
+		}
+	}
+
+	void Sph::readFileAndShow(){
+		if(program_const::IF_VISUALIZE){
+			draw();
+		}
+		if(m_step++ % dump_file_interval == 0){
+			std::string file_path = getFilePath("readLiquidFromCfg");
+			if(!readLiquidFromCfg(file_path)){
+				m_step = 0;
+			}
+		}
+	}
+
+	std::string Sph::getFilePath(std::string command){
+		std::stringstream ss;
+		if(command == "dumpLiquidAsPly"){
+			ss << program_const::PLY_SUBFOLDER;
+			ss << std::setfill('0') << std::setw(4) << m_step / dump_file_interval;
+			ss << ".ply";
+		}
+		else if(command == "dumpRigidBody"){
+			ss << program_const::RIGIDBODY_SUBFOLDER;
+			ss << std::setfill('0') << std::setw(4) << m_step / dump_file_interval;
+			ss << ".ply";
+		}
+		else if(command == "dumpLiquidAsCfg" || command == "readLiquidFromCfg"){
+			ss << program_const::CFG_SUBFOLDER;
+			ss << std::setfill('0') << std::setw(4) << m_step / dump_file_interval;
+			ss << ".cfg";
+		}
+		else{
+			std::cerr << "[getFilePath] called with known command: " << command << std::endl;
+		}
+		return ss.str();
+	}
+
+	void Sph::dumpLiquidAsCfg(std::string file_path){
 		//本函数用于输出可以被软件OVITO可视化的文件 | This function can be used to dump a file which can be visualized by software OVITO
-		ofstream fout(file_name);
+		ofstream fout(file_path);
 		if(!fout){
 			std::cout << "(out_put function)Error! Can not write into this file." << std::endl;
 			exit(-1);
@@ -484,9 +549,12 @@ namespace SPH
 		return;
 	}
 
-	void Sph::dump_wheel_ply(string file_name){
+	void Sph::dumpRigidBody(std::string file_path){
+		if(!use_rigid_body){
+			return;
+		}
 		//本函数用于输出ply文件以显示刚体的网格信息 | This function can be used to dump a ply file for rigidbody's mesh
-		ofstream fout(file_name);
+		ofstream fout(file_path);
 		if(!fout){
 			std::cout << "(out_put function)Error! Can not write into this file." << std::endl;
 			exit(-1);
@@ -518,52 +586,40 @@ namespace SPH
 		}
 	}
 
-
-	void Sph::dump_ply_file(string file_name){
-		stringstream ss;
-		ofstream fout(file_name);
+	void Sph::dumpLiquidAsPly(std::string file_path){
+		ofstream fout(file_path);
 		if(!fout){
-			std::cout << "(out_put function)Error! Can not write into this file." << std::endl;
+			std::cerr << "[dumpLiquidAsPly(" << file_path << ")] fails!" << std::endl;
 			exit(-1);
 		}
-		int cnt = 0;
-		for(int k = 0; k < total_num; k++){
-			if(nodes[k].status == "Wall" || nodes[k].status == "RigidBody") continue; // note Wall or Rigid Body
-			cnt++;
-			ss << nodes[k].position.getx() << " " << nodes[k].position.gety() << " " << nodes[k].position.getz() << endl;
+		stringstream ss;
+		int vertexCnt = 0;
+		for(int i = 0; i < total_num; i++){
+			if(nodes[i].isLiquid()){
+				vertexCnt++;
+				const Vec3& position = nodes[i].position;
+				ss << position.getx() << " " << position.gety() << " " << position.getz() << endl;
+			}
 		}
-		fout << "ply" << endl;
-		fout << "format ascii 1.0" << endl;
-		fout << "element vertex " << cnt << endl;
-		fout << "property float x" << endl;
-		fout << "property float y" << endl;
-		fout << "property float z" << endl;
-		fout << "end_header" << endl;
+		fout << "ply" << std::endl;
+		fout << "format ascii 1.0" << std::endl;
+		fout << "element vertex " << vertexCnt << std::endl;
+		fout << "property float x" << std::endl;
+		fout << "property float y" << std::endl;
+		fout << "property float z" << std::endl;
+		fout << "end_header" << std::endl;
 		fout << ss.str();
 	}
 
-	bool Sph::read_file(string file_name){
-		//本函数用于读取已经之前本程序输出过的文件
-		ifstream fin(file_name);
+	// Returns true if reading success
+	bool Sph::readLiquidFromCfg(std::string file_path){
+		ifstream fin(file_path);
 		string get_str;
 		if(!fin){
-			std::cout << "(in_put function)Error! Can not read this file." << std::endl;
+			std::cerr << "[readLiquidFromCfg(" << file_path << ")] fails!" << std::endl;
 			return false;
 		}
 		for(int k = 0; k < 13; k++){
-			//line1: Number of particles = {$total_num}
-			//line2: A = 1 Angstrom (basic length-scale)
-			//line3: H0(1,1) = {$x_bound * 100} A
-			//line4: H0(1,2) = 0 A
-			//line5: H0(1,3) = 0 A
-			//line6: H0(2,1) = 0 A
-			//line7: H0(2,2) = {$y_bound * 100} A
-			//line8: H0(2,3) = 0 A
-			//line9: H0(3,1) = 0 A
-			//line10: H0(3,2) = 0 A
-			//line11: H0(3,3) = {$L * 100} A
-			//line12: .NO_VELOCITY.
-			//line13: entry_count = 3
 			getline(fin, get_str);
 		}
 		int k = 0;
@@ -581,11 +637,16 @@ namespace SPH
 		return true;
 	}
 
-	void Sph::drawing_liquid(void){
-		GLint i = 0, j = 0, r = 0;
+	void Sph::draw(){
+		assert(if_visualize && "Calling draw() with IF_VISUALIZE == false!");
+		drawBoundingBox();
+		drawRigidBody();
+		drawLiquid();
+		return;
+	}
 
+	void Sph::drawBoundingBox(){
 		glColor3f(0.0, 1.0, 0.0);
-		//绘制流场外围
 		glBegin(GL_LINE_STRIP);
 		glVertex3i(0, 0, 0);
 		glVertex3i(l, 0, 0);
@@ -610,57 +671,32 @@ namespace SPH
 		glVertex3i(l, m, 0);
 		glVertex3i(l, m, h);
 		glEnd();
-		//绘制流场外围结束
+	}
 
-		for(i = total_num - 1; i >= 0; i--){
-			glColor3f(0.5f, 0.5f, 1.0f);
-			if(nodes[i].isWall()){
-				continue;
-			}
+	void Sph::drawRigidBody(){
+		glColor3f(1.0f, 1.0f, 0.0f);
+		for(int i = total_num - 1; i >= 0; i--){
 			if(nodes[i].isRigidBody()){
-				glColor3f(1.0f, 1.0f, 0.0f);
-			}
-			glPushMatrix();
-			glTranslated(nodes[i].position.getx() / dx, nodes[i].position.gety() / dy, nodes[i].position.getz() / dz);
-			glutSolidSphere(radius, 6, 6);
-			glPopMatrix();
-		}
-
-		return;
-	}
-
-	void Sph::step(){
-		double final_error = 1.0;
-		record_velocity();
-		drawing_liquid();
-		compute();
-		cout << "step " << m_step << endl;
-		if(m_step++ % Nwri == 0){
-			final_error = comp_error();
-			std::cout << "=====================" << std::endl;
-			std::cout << "Step: " << m_step << ";  error: " << final_error << std::endl;
-			// char str_step[10];
-			// itoa(m_step, str_step, 10);
-			stringstream ss;
-			ss << std::setfill('0') << std::setw(4) << m_step / Nwri;
-			if(if_dump == 1){ dump_file(string("data") + ss.str() + ".cfg"); }
-			else if(if_dump == 3){ dump_ply_file("../output/liquid_vis0/" + ss.str() + ".ply"); }
-			// in all cases dump wheel 
-			// dump_wheel_ply("../output/wheel/" + ss.str() + ".ply"); // do not have to
-
-		}
-	}
-
-	void Sph::OnlyReadFileStep(){
-		drawing_liquid();
-		if(m_step++ % Nwri == 0){
-			// char str_step[10];
-			// itoa(m_step, str_step, 10);
-			stringstream ss;
-			ss << m_step;
-			if(!read_file(string("data") + ss.str() + ".cfg")){
-				m_step = 0;
+				glPushMatrix();
+				glTranslated(nodes[i].position.getx() / dx,
+					nodes[i].position.gety() / dy, nodes[i].position.getz() / dz);
+				glutSolidSphere(radius, 6, 6);
+				glPopMatrix();
 			}
 		}
 	}
+
+	void Sph::drawLiquid(){
+		glColor3f(0.5f, 0.5f, 1.0f);
+		for(int i = total_num - 1; i >= 0; i--){
+			if(nodes[i].isLiquid()){
+				glPushMatrix();
+				glTranslated(nodes[i].position.getx() / dx,
+					nodes[i].position.gety() / dy, nodes[i].position.getz() / dz);
+				glutSolidSphere(radius, 6, 6);
+				glPopMatrix();
+			}
+		}
+	}
+
 }
