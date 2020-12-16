@@ -41,7 +41,10 @@ namespace SPH
 
 		double lambda, stiffness, KK, gamma;
 
+		double dx, dy, dz;
 		int dh_ratio;  // dh / dx, meaning the ratio of search radius by particle size
+		double dh;  // Search radius
+		double dt;	// Delta time
 
 		// Including 6 char, each denoting the boundary type of Left/Right/Forward/Back/Down/Up,
 		// where 'P' stands for Periodical and 'W' stands for Wall.
@@ -58,10 +61,6 @@ namespace SPH
 		int grid_num[l + 1][m + 1][h + 1];
 		int cur_step;
 
-		double dx, dy, dz;
-		double dh;  // Search radius
-		double dt;	// Delta time
-
 		// Store vertex coordinates of rigidbody in local coordinate, 
 		// where center is the wheel center.
 		std::vector<Vec3> localcoord_rigidbody;
@@ -70,6 +69,7 @@ namespace SPH
 		Vec3 translate_rigidbody;
 
 		Kernels kernels;
+
 		Sph():
 			use_rigid_body(program_const::kUseRigidBody),
 			if_visualize(program_const::IF_VISUALIZE),
@@ -92,12 +92,9 @@ namespace SPH
 			dt = lambda * dh / sqrt(stiffness);
 			KK = stiffness * rho_liquid / gamma;
 			memset(grid_num, 0, sizeof(grid_num));
-			prev_velocity = std::vector<Vec3>(nodes_num, Vec3(0.0, 0.0, 0.0));
-
 			rigidbody = Wheel(sph_const::kRhoRigidbody, sph_const::kRigidBodyRadiusOutSize,
 				sph_const::kRigidBodyRadiusInSize, sph_const::kRigidBodyHeight,
 				sph_const::kRigidBodyCenter, sph_const::kRigidBodyLeafNum);
-
 			initNodes();
 			setKernels();
 		}
@@ -111,15 +108,15 @@ namespace SPH
 		void computePressureAccelerate(int k);
 		void computeVisAccerlerate(int k);
 		void computeDensity(int k);
+		void updateRigidBody();
 
+		void addNode(int i, int j, int r, std::string status);
 		void setWallNodes();
-		void setRigidBodyMesh();
 		void setRigidBodyNodes();
 		void setLiquidNodes();
+		void setRigidBodyMesh();
 
-		void updateRigidBody();
-		void addNode(int i, int j, int r, std::string status);
-
+		void dumpFiles();
 		std::string getFilePath(std::string command);
 		void dumpLiquidAsCfg(std::string file_path);
 		void dumpLiquidAsPly(std::string file_path);
@@ -131,11 +128,9 @@ namespace SPH
 		void drawRigidBody();
 		void drawLiquid();
 
-		double getError();
 		void recordVelocity();
-
+		double getError();
 		int getStep();
-
 	};
 
 }
