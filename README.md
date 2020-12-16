@@ -5,7 +5,7 @@ This repository is a course project of Physically-Based Simulation in Computer G
 
 The project is a collaborative work from [Ge Cao](https://github.com/GeCao), [Xiao Wu](https://github.com/Adamink), [Mingyang Song](https://github.com/FrauSong).
 
-The demo video is available at Youtube.
+The demo video is available at [Youtube](https://youtu.be/wf_0VI8c-Rg).
 
 Features:
 - Particle-based fluid simulation with SPH method
