@@ -29,7 +29,7 @@ public:
 		torque(Vec3()),
 		inertia_inv(Mat3()){}
 
-	virtual void update(double m_dt) = 0;
+	virtual void update(double dt) = 0;
 };
 
 class Wheel: public RigidBody{
@@ -39,8 +39,8 @@ public:
 
 	double m_wheel_radius_outsize;  // The radius of wheel (out circle)
 	double m_wheel_radius_insize;  // The radius of wheel (in circle)
-	double m_wheel_height;  //The height of wheel
-	int m_leafnum;  //The number of leaves in the wheel
+	double m_wheel_height;  // The height of wheel
+	int m_leafnum;  // The number of leaves in the wheel
 	double swirl_velocity;
 	double m_Mass;
 
@@ -56,29 +56,30 @@ public:
 
 	}
 
-	Wheel(double rho_R, double radius_outsize, double radius_insize, double height, Vec3 center, int leaf_num){
+	Wheel(double rho_rigidbody, double radius_outsize, double radius_insize, double height, Vec3 center, int leaf_num){
 		position = center;
 		m_wheel_radius_outsize = radius_outsize;
 		m_wheel_radius_insize = radius_insize;
 		m_wheel_height = height;
 		m_leafnum = leaf_num;
-		m_Mass = rho_R * height * 4.0 * math_const::PI * \
+		m_Mass = rho_rigidbody * height * 4.0 * math_const::PI * \
 			(m_wheel_radius_insize * m_wheel_radius_insize + m_wheel_radius_outsize * m_wheel_radius_outsize) / 2.0;
 		particle_indexes.clear();
 		inertia_inv = Mat3();
 
 	}
 
-	virtual void update(double m_dt){ //Semi-implicit
-		swirl_velocity = math_const::PI / 18.0 / m_dt;
+	// Semi-implicit update
+	virtual void update(double dt){
+		swirl_velocity = math_const::PI / 18.0 / dt;
 	}
 };
 
 class Sphere:public RigidBody{
 public:
-	std::vector<int> particle_indexes; //Store the index rigid body nodes
-	Vec3 m_sphere_center; //The center of sphere.
-	double m_sphere_radius; //The radius of sphere.
+	std::vector<int> particle_indexes; // Store the index rigid body nodes
+	Vec3 m_sphere_center; // The center of sphere
+	double m_sphere_radius; // The radius of sphere
 	double m_Mass;
 
 	Sphere(){
@@ -91,9 +92,9 @@ public:
 		position = m_sphere_center;
 	}
 
-	Sphere(double rho_R, double radius, Vec3 center){
+	Sphere(double rho_rigidbody, double radius, Vec3 center){
 		m_sphere_radius = radius;
-		m_Mass = rho_R * (4.0 * 3.1415926 / 3.0 * pow(radius, 3));
+		m_Mass = rho_rigidbody * (4.0 * math_const::PI / 3.0 * pow(radius, 3));
 		m_sphere_center = center;
 		particle_indexes.clear();
 		inertia_inv = Mat3() * (0.4 * m_Mass * m_sphere_radius * m_sphere_radius);
@@ -101,26 +102,26 @@ public:
 		position = m_sphere_center;
 	}
 
-	virtual void update(double m_dt){ //Semi-implicit
+	virtual void update(double dt){ // Semi-implicit
 		Mat3 I_inv = rotation.multiply(inertia_inv).multiply(rotation);
 
-		//已经更新的变量：linear force & torque: 2 variables done!
-		linear_momentum += linear_force * m_dt; // 3 variables done!
-		angular_momentum += torque * m_dt; // 4 variables done!
-		cout << "forcces: " << linear_force << std::endl;
+		// Linear force & torque has already updated
+		linear_momentum += linear_force * dt;
+		angular_momentum += torque * dt;
 
-		torque -= angular_velocity.crossProduct(I_inv.multiply(angular_velocity)); //加入科里奥利力
-		angular_velocity += I_inv.multiply(torque) * m_dt; // 5 variables done!
+		// Coriolis force
+		torque -= angular_velocity.crossProduct(I_inv.multiply(angular_velocity));
+		angular_velocity += I_inv.multiply(torque) * dt;
 
-		velocity = linear_momentum / m_Mass; // 6 variables done!
-		position += velocity * m_dt; // 7 variables done!
+		velocity = linear_momentum / m_Mass;
+		position += velocity * dt;
 		m_sphere_center = position;
 
 		Mat3 Omega(std::vector<Vec3>{
 			Vec3(0.0, -angular_velocity.getz(), angular_velocity.gety()),
 				Vec3(angular_velocity.getz(), 0.0, -angular_velocity.getx()),
 				Vec3(-angular_velocity.gety(), angular_velocity.getx(), 0.0)});
-		rotation += Omega.multiply(rotation) * m_dt;
+		rotation += Omega.multiply(rotation) * dt;
 	}
 };
 

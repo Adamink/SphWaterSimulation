@@ -16,7 +16,7 @@ static void initGLutWindow(){
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 
-	using namespace camera_const;
+	using namespace visual_const;
 	gluPerspective(fovy, aspect, zFar, zNear);
 	gluLookAt(eyex, eyey, eyez, centerx, centery, centerz, upx, upy, upz);
 }
@@ -41,6 +41,7 @@ static void runWithNoVisualization(){
 }
 int main(int argc, char* argv[]){
 	using namespace program_const;
+	using namespace visual_const;
 	omp_set_num_threads(NUM_THREADS_COMPUTING);
 	sph_instance = new SPH::Sph();
 	if(IF_VISUALIZE){

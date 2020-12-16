@@ -5,7 +5,7 @@ from datetime import datetime
 class MeshGenerator:
     def __init__(self, frameRange=range(1, 201),
                  parent_fd='./output/', in_fd='liquid_vis0.02', out_fd='meshed_liquid_vis0.02',
-                 cube_size=0.5, particle_radius=0.05, kernel_radius=10.0, surface_threshold=1.0):
+                 cube_size=0.5, particle_radius=0.05, kernel_radius=10.0, surface_threshold=0.6):
 
         setting_str = f"c{cube_size}p{particle_radius}k{kernel_radius}s{surface_threshold}"
         sub_fd = os.path.join(parent_fd, out_fd, setting_str)
@@ -55,5 +55,10 @@ class MeshGenerator:
 
 
 if __name__ == '__main__':
-    MeshGenerator(in_fd='norigidbody_vis0.02',
-                  out_fd='meshed_norigidbody_vis0.02', cube_size=1.0, surface_threshold=0.6)
+    MeshGenerator(frameRange=range(38, 39),
+                  in_fd='compare',
+                  out_fd='compare',
+                  cube_size=0.5,
+                  particle_radius=0.1,
+                  kernel_radius=10.0,
+                  surface_threshold=0.6)

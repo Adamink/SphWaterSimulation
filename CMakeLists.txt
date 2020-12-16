@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.9)
 project(SphWaterSimulation)
 
 set(CMAKE_CXX_FLAGS "-Wall")
@@ -9,10 +9,6 @@ file(GLOB SRCFILES ${SRC_DIR}/*.cc ${SRC_DIR}/*.cpp ${SRC_DIR}/*.c ${SRC_DIR}/*.
 add_executable(${PROJECT_NAME} ${SRCFILES})
 
 set(LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern")
-
-# glew
-find_package(GLEW REQUIRED)
-target_link_libraries(${PROJECT_NAME} GLEW::GLEW)
 
 # freeglut
 set(GLUT_DIR "${LIB_DIR}/freeglut")
