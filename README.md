@@ -18,7 +18,12 @@ Features:
 - Multithreading for accelerating simulation using [OpenMP](https://www.openmp.org/)
 - Rendered using Cycles with GPU accelerated ray-tracing
 ## Install & Run
-The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. To build the project, run the following command in the project folder.
+The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. The project also depends on OpenGL, please use following command to install OpenGL.
+```shell
+sudo apt-get install libglu1-mesa-dev freeglut3-dev mesa-common-dev libx11-dev libxi-dev
+```
+
+To build the project, run the following command in the project folder.
 ```shell
 mkdir build
 cd build
