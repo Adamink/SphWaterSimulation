@@ -1,15 +1,16 @@
 # SphWaterSimulation
-This project is a course work of Physically-Based Simulation in Computer Graphics, ETH Zurich, 2020 Fall.
+![](./assets/demo.gif)
 
-The is a collaborative project from [Ge Cao](https://github.com/GeCao), [Xiao Wu](https://github.com/Adamink), [Mingyang Song](https://github.com/FrauSong).
+This project is a course project of Physically-Based Simulation in Computer Graphics, ETH Zurich, Fall 2020.
+
+The project is a collaborative work from [Ge Cao](https://github.com/GeCao), [Xiao Wu](https://github.com/Adamink), [Mingyang Song](https://github.com/FrauSong).
 
 The demo video is available at Youtube.
-
 
 ## Install & Run
 The installation has only been tested on Ubuntu for now.
 
-The project is built with [cmake](https://cmake.org/). Before installation, please make sure cmake is installed.
+The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed.
 
 To build the project, run the following command in the project folder.
 ```shell
