@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.9)
 project(SphWaterSimulation)
 
-set(CMAKE_CXX_FLAGS "-Wall")
+# set(CMAKE_CXX_FLAGS "-Wall")
 
 # source files
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SphWaterSimulation")

@@ -13,7 +13,6 @@ public:
 	Vec3 angular_velocity;
 	Vec3 linear_momentum, linear_force;
 	Vec3 angular_momentum, torque;
-
 	Mat3 rotation;
 	// The inverse of inertia matrix.
 	Mat3 inertia_inv;
@@ -21,12 +20,12 @@ public:
 	RigidBody():
 		position(Vec3()),
 		velocity(Vec3()),
-		rotation(Mat3()),
 		angular_velocity(Vec3()),
 		linear_momentum(Vec3()),
 		linear_force(Vec3()),
 		angular_momentum(Vec3()),
 		torque(Vec3()),
+		rotation(Mat3()),
 		inertia_inv(Mat3()){}
 
 	virtual void update(double dt) = 0;

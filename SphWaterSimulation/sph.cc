@@ -43,7 +43,7 @@ namespace SPH
 			if(if_visualize)
 				draw();
 			compute();
-			std::cout << "step: " << cur_step << ";  error: " << getError() << std::endl;
+			std::cout << "step: " << cur_step << "\terror: " << getError();
 			if(cur_step++ % dump_file_interval == 0){
 				dumpFiles();
 			}
@@ -161,7 +161,7 @@ namespace SPH
 			rho_error = sqrt(rho_error);
 			if(rho_error < 0.1){ break; }
 		}
-		std::cerr << "rho_error: " << rho_error << std::endl;
+		std::cout << "\trho_error: " << rho_error << std::endl;
 
 		// Step 7: Update rigidbody
 		if(use_rigid_body){
