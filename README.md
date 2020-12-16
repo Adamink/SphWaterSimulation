@@ -10,15 +10,16 @@ The demo video is available at Youtube.
 Features:
 - Particle-based fluid simulation with SPH method
 - Iterative SESPH
-- Couple liquid with rigid body (the wheel)
+- Coupling liquid simulation with rigid body (the wheel)
 - Dambreak scene & Waterwheel scene
 - Particles import & export in `ply` and `cfg` format
-- Multiple ways of visualization using [OVITO](http://www.ovito.org/), [OpenGL/GLUT](https://www.opengl.org/resources/libraries/glut/) as well as [blender](https://www.blender.org/)
-- Surface reconstruction using [splashsurf]((https://github.com/w1th0utnam3/splashsurf))
+- Multiple ways of visualization using [OVITO](http://www.ovito.org/), [OpenGL/GLUT](https://www.opengl.org/resources/libraries/glut/) and [blender](https://www.blender.org/)
+- Surface reconstruction using [splashsurf](https://github.com/w1th0utnam3/splashsurf)
 - Multithreading for accelerating simulation using [OpenMP](https://www.openmp.org/)
-- Rendered using Cycles with GPU accelerated ray-tracing
+- Rendered using [Cycles](https://www.cycles-renderer.org/) with GPU accelerated ray-tracing
+
 ## Install & Run
-The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. The project also depends on OpenGL, please use following command to install OpenGL.
+The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. The project also depends on OpenGL/GLUT, please use the following command to install OpenGL/GLUT.
 ```shell
 sudo apt-get install libglu1-mesa-dev freeglut3-dev mesa-common-dev libx11-dev libxi-dev
 ```
