@@ -16,10 +16,10 @@ Features:
 - Multiple ways of visualization using [OVITO](http://www.ovito.org/), [OpenGL/GLUT](https://www.opengl.org/resources/libraries/glut/) and [blender](https://www.blender.org/)
 - Surface reconstruction using [splashsurf](https://github.com/w1th0utnam3/splashsurf)
 - Multithreading for accelerating simulation using [OpenMP](https://www.openmp.org/)
-- Rendered using [Cycles](https://www.cycles-renderer.org/) with GPU accelerated ray-tracing
+- Rendered with GPU accelerated ray-tracing using [Cycles](https://www.cycles-renderer.org/) 
 
 ## Install & Run
-The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. The project also depends on OpenGL/GLUT, please use the following command to install OpenGL/GLUT.
+The installation has only been tested on Ubuntu for now. The project is built with [CMake](https://cmake.org/). Before installation, please make sure CMake is installed. The project also depends on OpenGL/GLUT, please use the following command to install dependencies.
 ```shell
 sudo apt-get install libglu1-mesa-dev freeglut3-dev mesa-common-dev libx11-dev libxi-dev
 ```
