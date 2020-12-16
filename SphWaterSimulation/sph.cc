@@ -11,6 +11,35 @@
 
 namespace SPH
 {
+    Sph::Sph():
+        use_rigid_body(program_const::kUseRigidBody),
+        if_visualize(program_const::IF_VISUALIZE),
+        read_from_file(program_const::READ_FROM_FILES),
+        dump_file_interval(program_const::kDumpFileInterval),
+        dh_ratio(sph_const::kdhRatio),
+        lambda(sph_const::kLambda),
+        stiffness(sph_const::kStiffness),
+        mass_liquid(sph_const::kMassLiquid),
+        gamma(sph_const::kGamma),
+        viscosity(sph_const::kViscosity){
+
+        cur_step = 0;
+        nodes_num = 0;
+        init_pressure = 0.;
+        max_velocity = 0.;
+        dx = x_bound / l, dy = y_bound / m, dz = z_bound / h;
+        dh = dh_ratio * dx;
+        rho_liquid = mass_liquid / dx / dy / dz;
+        dt = lambda * dh / sqrt(stiffness);
+        KK = stiffness * rho_liquid / gamma;
+        memset(grid_num, 0, sizeof(grid_num));
+        rigidbody = Wheel(sph_const::kRhoRigidbody, sph_const::kRigidBodyRadiusOutSize,
+            sph_const::kRigidBodyRadiusInSize, sph_const::kRigidBodyHeight,
+            sph_const::kRigidBodyCenter, sph_const::kRigidBodyLeafNum);
+        initNodes();
+        setKernels();
+    }
+
     void Sph::initNodes(){
         // Set the bounding box as "Wall" nom_hdes
         setWallNodes();
