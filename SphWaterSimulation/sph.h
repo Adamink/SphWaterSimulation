@@ -11,11 +11,9 @@
 
 #include "particle.h"
 #include "vec3.h"
-#include "rigid_body.h"
+#include "rigidbody.h"
 #include "constants.h"
 #include "kernels.h"
-
-using namespace std;
 
 namespace SPH
 {
@@ -52,11 +50,11 @@ namespace SPH
 
 		int nodes_num;  // The number of all the particles
 		// Store liquid nodes, wall nodes and rigidbody nodes together.
-		vector<Particle> nodes;
+		std::vector<Particle> nodes;
 		// Store all the index of particles in corresponding grids.
-		vector<int> idx_table[l + 1][m + 1][h + 1];
+		std::vector<int> idx_table[l + 1][m + 1][h + 1];
 		Wheel rigidbody;
-		vector<Vec3> prev_velocity;
+		std::vector<Vec3> prev_velocity;
 		// Store the number of particles in each grid.
 		int grid_num[l + 1][m + 1][h + 1];
 		int cur_step;
@@ -65,7 +63,7 @@ namespace SPH
 		// where center is the wheel center.
 		std::vector<Vec3> localcoord_rigidbody;
 		// Store faces of rigidbody with vertex index.
-		std::vector<vector<int> > faces_rigidbody;
+		std::vector<std::vector<int> > faces_rigidbody;
 		Vec3 translate_rigidbody;
 
 		Kernels kernels;

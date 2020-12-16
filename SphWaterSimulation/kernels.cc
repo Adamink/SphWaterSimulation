@@ -1,5 +1,7 @@
 #include "kernels.h"
 
+#include <cmath>
+
 double Kernels::Muller03Kernel_Basic(Vec3 origin_point, Vec3 detect_point){
     double r_square_norm = (detect_point - origin_point).sqrNorm();
     if(search_radius * search_radius > r_square_norm){

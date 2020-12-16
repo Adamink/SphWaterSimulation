@@ -200,7 +200,7 @@ namespace SPH
 			max_velocity = max_velocity > u_maxAbsCoord ? max_velocity : u_maxAbsCoord;
 		}
 		// Update dt
-		dt = lambda * dh / max(max_velocity, sqrt(stiffness));
+		dt = lambda * dh / std::max(max_velocity, sqrt(stiffness));
 		dt = lambda * dh / sqrt(stiffness);
 
 		return;
@@ -512,7 +512,7 @@ namespace SPH
 
 	// This function can be used to dump a file which can be visualized by software OVITO.
 	void Sph::dumpLiquidAsCfg(std::string file_path){
-		ofstream fout(file_path);
+		std::ofstream fout(file_path);
 		if(!fout){
 			std::cout << "(out_put function)Error! Can not write into this file." << std::endl;
 			exit(-1);
@@ -551,7 +551,7 @@ namespace SPH
 		if(!use_rigid_body){
 			return;
 		}
-		ofstream fout(file_path);
+		std::ofstream fout(file_path);
 		if(!fout){
 			std::cout << "(out_put function)Error! Can not write into this file." << std::endl;
 			exit(-1);
@@ -585,18 +585,18 @@ namespace SPH
 	}
 
 	void Sph::dumpLiquidAsPly(std::string file_path){
-		ofstream fout(file_path);
+		std::ofstream fout(file_path);
 		if(!fout){
 			std::cerr << "[dumpLiquidAsPly(" << file_path << ")] fails!" << std::endl;
 			exit(-1);
 		}
-		stringstream ss;
+		std::stringstream ss;
 		int vertexCnt = 0;
 		for(int i = 0; i < nodes_num; i++){
 			if(nodes[i].isLiquid()){
 				vertexCnt++;
 				const Vec3& position = nodes[i].position;
-				ss << position.getx() << " " << position.gety() << " " << position.getz() << endl;
+				ss << position.getx() << " " << position.gety() << " " << position.getz() << std::endl;
 			}
 		}
 		fout << "ply" << std::endl;
@@ -611,8 +611,8 @@ namespace SPH
 
 	// Returns true if reading success
 	bool Sph::readLiquidFromCfg(std::string file_path){
-		ifstream fin(file_path);
-		string get_str;
+		std::ifstream fin(file_path);
+		std::string get_str;
 		if(!fin){
 			std::cerr << "[readLiquidFromCfg(" << file_path << ")] fails!" << std::endl;
 			return false;

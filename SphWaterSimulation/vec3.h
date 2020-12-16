@@ -5,8 +5,6 @@
 #include <cassert>
 #include <cmath>
 
-using namespace std;
-
 class Vec3{
 public:
 	double x, y, z;
@@ -28,7 +26,7 @@ public:
 	}
 	Vec3 operator-() const{ return Vec3(-x, -y, -z); }
 
-	friend ostream& operator<<(ostream& os, const Vec3& a){
+	friend std::ostream& operator<<(std::ostream& os, const Vec3& a){
 		os << "Vec3(" << a.x << ", " << a.y << ", " << a.z << ")";
 		return os;
 	}

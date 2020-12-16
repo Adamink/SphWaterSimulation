@@ -15,7 +15,7 @@ public:
 	Vec3 force_press;
 	// The status of particle, "Wall" for Wall, "RigidBody" for RigidBody, "Liquid" for Liquid
 	std::string status;
-	vector<int> neighbor_index;
+	std::vector<int> neighbor_index;
 
 	Particle(double rho, double init_pressure, Vec3 acc_ext):
 		velocity(Vec3(0.0, 0.0, 0.0)),
@@ -26,7 +26,7 @@ public:
 		force_vis(Vec3(0.0, 0.0, 0.0)),
 		force_press(Vec3(0.0, 0.0, 0.0)),
 		status("L"),
-		neighbor_index(vector<int>()){}
+		neighbor_index(std::vector<int>()){}
 
 	void setPosition(double new_x, double new_y, double new_z){
 		position = Vec3(new_x, new_y, new_z);

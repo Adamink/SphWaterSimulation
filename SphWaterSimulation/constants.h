@@ -2,6 +2,7 @@
 #define CONSTANTS_H_
 
 #include <string>
+
 #include "vec3.h"
 
 namespace program_const
@@ -12,7 +13,7 @@ namespace program_const
     const int NUM_THREADS_COMPUTING = 4;
     const bool IF_VISUALIZE = true;
 
-    const std::string DUMP_FOLDER("../output/final/");
+    const std::string DUMP_FOLDER("../output/");
     const std::string CFG_SUBFOLDER = DUMP_FOLDER + "liquid_cfg/";
     const std::string PLY_SUBFOLDER = DUMP_FOLDER + "liquid_ply/";
     const std::string RIGIDBODY_SUBFOLDER = DUMP_FOLDER + "rigidbody_ply/";
