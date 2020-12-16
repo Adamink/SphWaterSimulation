@@ -23,7 +23,9 @@ Then, type `./SphWaterSimulation` to run the simulation.
 ## Rendering
 For further rendering, we use [splashsurf](https://github.com/w1th0utnam3/splashsurf) to reconstruct the liquid surface, and use [blender](https://www.blender.org/) to render the scene. When importing sequence of .obj files into blender, please refer to plugin [stop motion obj](https://github.com/neverhood311/Stop-motion-OBJ) for blender.
 
-To install relevant packages, you can refer to `scripts/install_utilities.sh`
+To install relevant packages, please refer to `scripts/install_utilities.sh`
+
+After installation, use `python3 ./scripts/construct_surface.py` to construct liquid surface.
 
 We also upload our blender file for future reference. [Link](https://drive.google.com/drive/folders/1yZUP7o5rQNcQyGSNhPJRxcLfqKRuhjfM?usp=sharing).
 
